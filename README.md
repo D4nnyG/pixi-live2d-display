@@ -8,14 +8,11 @@ English | [中文](README.zh.md)
 
 > :warning: This readme is for v0.4.0, if you're looking for v0.3.1, see [this](https://github.com/guansss/pixi-live2d-display/blob/dfa7f764f241c1c802e92a7ab490206369746efd/README.md).
 
-Live2D integration for [PixiJS](https://github.com/pixijs/pixi.js) v6.
+Live2D integration for [PixiJS](https://github.com/pixijs/pixi.js) v7.
 
 This project aims to be a universal Live2D framework on the web platform. While the official Live2D framework is just
 complex and problematic, this project has rewritten it to unify and simplify the APIs, which allows you to control the
 Live2D models on a high level without the need to learn how the internal system works.
-
-#### Feel free to support the Maintainer:
-<a href="https://www.buymeacoffee.com/RaSan147" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 #### Features
 
@@ -29,7 +26,7 @@ Live2D models on a high level without the need to learn how the internal system 
 
 #### Requirements
 
--   PixiJS: >6
+-   PixiJS: >7
 -   Browser: WebGL, ES6
 
 #### Demos
