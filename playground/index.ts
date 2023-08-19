@@ -1,13 +1,11 @@
 // run this to tell git not to track this file
 // git update-index --skip-worktree test/playground/index.ts
 
-import { Application, Renderer, Ticker } from 'pixi.js';
+import { Application, Ticker } from 'pixi.js';
 import { Live2DModel } from '../src';
 import { Assets } from '@pixi/assets';
-import { EventSystem } from '@pixi/events';
 
 Live2DModel.registerTicker(Ticker);
-delete Renderer.__plugins.interaction;
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 
@@ -18,7 +16,6 @@ async function main() {
         height:720
     });
     const { renderer } = app;
-    renderer.addSystem(EventSystem, 'events');
     (window as any).app = app;
     (window as any).renderer = renderer;
 

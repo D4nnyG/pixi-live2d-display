@@ -238,7 +238,7 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
         }, options);
 
         if (_options.autoInteract) {
-            this.interactive = true;
+            this.eventMode = "static";
         }
 
         this.autoInteract = _options.autoInteract;

@@ -19,7 +19,7 @@ export class HitAreaFrames extends Graphics {
     constructor() {
         super();
 
-        this.interactive = true;
+        this.eventMode = "static";
 
         this.on('added', this.init).on('pointermove', this.onPointerMove);
     }

@@ -17,19 +17,16 @@ export class InteractionMixin {
     }
 
     set autoInteract(autoInteract: boolean) {
-        if (autoInteract !== this._autoInteract) {
-            if (autoInteract) {
-                // (this as any as Live2DModel<any>).on('pointertap', onTap, this);
-                (this as any as Live2DModel<any>).addEventListener("pointertap", onTap as EventListener);
-                (this as any as Live2DModel<any>).addEventListener("pointermove", onPointerMove as EventListener);
-            } else {
-                // (this as any as Live2DModel<any>).off('pointertap', onTap, this);
-                (this as any as Live2DModel<any>).removeEventListener("pointertap", onTap as EventListener);
-                (this as any as Live2DModel<any>).addEventListener("pointermove", onPointerMove as EventListener);
-            }
-
-            this._autoInteract = autoInteract;
+        if(autoInteract === this._autoInteract) return;
+        if (autoInteract) {
+            (this as any as Live2DModel<any>).on("pointertap", onTap as EventListener);
+            (this as any as Live2DModel<any>).on("pointermove", onPointerMove as EventListener);
+        } else {
+            (this as any as Live2DModel<any>).off("pointertap", onTap as EventListener);
+            (this as any as Live2DModel<any>).off("pointermove", onPointerMove as EventListener);
         }
+
+        this._autoInteract = autoInteract;
     }
 
     /**
@@ -63,7 +60,7 @@ export class InteractionMixin {
     // }
 }
 
-function onTap(this: Live2DModel<any>, event: FederatedMouseEvent): void {
+function onTap(this: Live2DModel<any>, event: FederatedMouseEvent) {
     this.tap(event.globalX, event.globalY);
 }
 

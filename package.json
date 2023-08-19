@@ -52,13 +52,15 @@
   ],
   "types": "types/index.d.ts",
   "peerDependencies": {
-    "@pixi/assets": "^6",
-    "@pixi/core": "^6",
-    "@pixi/display": "^6",
-    "@pixi/math": "^6",
-    "@pixi/sprite": "^6",
-    "@pixi/utils": "^6",
-    "@pixi/events": "^6"
+    "@pixi/core": "^7.3.0-rc.2",
+    "@pixi/assets": "^7.3.0-rc.2",
+    "@pixi/display": "^7.3.0-rc.2",
+    "@pixi/math": "^7.3.0-rc.2",
+    "@pixi/sprite": "^7.3.0-rc.2",
+    "@pixi/utils": "^7.3.0-rc.2",
+    "@pixi/events": "^7.3.0-rc.2",
+    "@pixi/text": "^7.3.0-rc.2",
+    "@pixi/graphics": "^7.3.0-rc.2"
   },
   "devDependencies": {
     "@types/chai": "^4.3.1",
@@ -78,7 +80,7 @@
     "jszip": "^3.10.0",
     "lodash-es": "^4.17.21",
     "node-fetch": "^2",
-    "pixi.js": "^6.4.2",
+    "pixi.js": "^7.3.0-rc.2",
     "rimraf": "^3.0.2",
     "sinon": "^14.0.0",
     "sinon-chai": "^3.7.0",
