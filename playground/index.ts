@@ -11,12 +11,14 @@ const modelURL = 'https://cdn.jsdelivr.net/gh/Eikanya/Live2d-model/Live2D/Senko_
 
 async function main() {
     const app = new Application({
-        resizeTo: window,
         view: canvas,
+        width: 1280,
+        height:720
     });
     (window as any).app = app;
 
     const model = await Live2DModel.from(modelURL);
+    model.scale = {x:0.25, y:0.25}
 
     app.stage.addChild(model);
 }

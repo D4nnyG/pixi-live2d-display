@@ -54,7 +54,6 @@
   "peerDependencies": {
     "@pixi/core": "^6",
     "@pixi/display": "^6",
-    "@pixi/loaders": "^6",
     "@pixi/math": "^6",
     "@pixi/sprite": "^6",
     "@pixi/utils": "^6"
