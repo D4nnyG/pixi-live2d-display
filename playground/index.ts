@@ -1,14 +1,15 @@
 // run this to tell git not to track this file
 // git update-index --skip-worktree test/playground/index.ts
 
-import { Application, Ticker } from 'pixi.js';
+import { Application, Renderer, Ticker } from 'pixi.js';
 import { Live2DModel } from '../src';
 import { Assets } from '@pixi/assets';
+import { EventSystem } from '@pixi/events';
 
 Live2DModel.registerTicker(Ticker);
+delete Renderer.__plugins.interaction;
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const modelURL = 'https://cdn.jsdelivr.net/gh/Eikanya/Live2d-model/Live2D/Senko_Normals/senko.model3.json';
 
 async function main() {
     const app = new Application({
@@ -16,12 +17,16 @@ async function main() {
         width: 1280,
         height:720
     });
+    const { renderer } = app;
+    renderer.addSystem(EventSystem, 'events');
     (window as any).app = app;
+    (window as any).renderer = renderer;
 
     Assets.load("./Haru/Haru.model3.json").then(resp => {
         const model = Live2DModel.fromAsset(resp);
         model.scale = {x:0.25, y:0.25};
         app.stage.addChild(model);
+        globalThis.model = model;
     });
 
     // const model = await Live2DModel.from(modelURL);

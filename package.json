@@ -52,12 +52,13 @@
   ],
   "types": "types/index.d.ts",
   "peerDependencies": {
-    "@pixi/core": "^6",
     "@pixi/assets": "^6",
+    "@pixi/core": "^6",
     "@pixi/display": "^6",
     "@pixi/math": "^6",
     "@pixi/sprite": "^6",
-    "@pixi/utils": "^6"
+    "@pixi/utils": "^6",
+    "@pixi/events": "^6"
   },
   "devDependencies": {
     "@types/chai": "^4.3.1",
@@ -86,6 +87,7 @@
     "vite": "^2.9.13"
   },
   "dependencies": {
+    
     "gh-pages": "^4.0.0"
   },
   "packageManager": "yarn@1.22.19"

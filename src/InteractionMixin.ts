@@ -1,5 +1,5 @@
-import { InteractionEvent, InteractionManager } from '@pixi/interaction';
 import { Live2DModel } from './Live2DModel';
+import { FederatedMouseEvent } from '@pixi/events';
 
 /**
  * The interaction control split from Live2DModel class for code clarity. This mixin should *only*
@@ -19,9 +19,13 @@ export class InteractionMixin {
     set autoInteract(autoInteract: boolean) {
         if (autoInteract !== this._autoInteract) {
             if (autoInteract) {
-                (this as any as Live2DModel<any>).on('pointertap', onTap, this);
+                // (this as any as Live2DModel<any>).on('pointertap', onTap, this);
+                (this as any as Live2DModel<any>).addEventListener("pointertap", onTap as EventListener);
+                (this as any as Live2DModel<any>).addEventListener("pointermove", onPointerMove as EventListener);
             } else {
-                (this as any as Live2DModel<any>).off('pointertap', onTap, this);
+                // (this as any as Live2DModel<any>).off('pointertap', onTap, this);
+                (this as any as Live2DModel<any>).removeEventListener("pointertap", onTap as EventListener);
+                (this as any as Live2DModel<any>).addEventListener("pointermove", onPointerMove as EventListener);
             }
 
             this._autoInteract = autoInteract;
@@ -31,38 +35,38 @@ export class InteractionMixin {
     /**
      * Local reference used to clean up the event listeners when destroying the model.
      */
-    interactionManager?: InteractionManager;
+    // interactionManager?: InteractionManager;
 
     /**
      * Registers interaction by subscribing to the `PIXI.InteractionManager`.
      */
-    registerInteraction(this: Live2DModel<any>, manager?: InteractionManager): void {
-        if (manager !== this.interactionManager) {
-            this.unregisterInteraction();
+    // registerInteraction(this: Live2DModel<any>, manager?: InteractionManager): void {
+    //     if (manager !== this.interactionManager) {
+    //         this.unregisterInteraction();
 
-            if (this._autoInteract && manager) {
-                this.interactionManager = manager;
+    //         if (this._autoInteract && manager) {
+    //             this.interactionManager = manager;
 
-                manager.on('pointermove', onPointerMove, this);
-            }
-        }
-    }
+    //             manager.on('pointermove', onPointerMove, this);
+    //         }
+    //     }
+    // }
 
     /**
      * Unregisters interaction.
      */
-    unregisterInteraction(this: Live2DModel<any>): void {
-        if (this.interactionManager) {
-            this.interactionManager?.off('pointermove', onPointerMove, this);
-            this.interactionManager = undefined;
-        }
-    }
+    // unregisterInteraction(this: Live2DModel<any>): void {
+    //     if (this.interactionManager) {
+    //         this.interactionManager?.off('pointermove', onPointerMove, this);
+    //         this.interactionManager = undefined;
+    //     }
+    // }
 }
 
-function onTap(this: Live2DModel<any>, event: InteractionEvent): void {
-    this.tap(event.data.global.x, event.data.global.y);
+function onTap(this: Live2DModel<any>, event: FederatedMouseEvent): void {
+    this.tap(event.globalX, event.globalY);
 }
 
-function onPointerMove(this: Live2DModel<any>, event: InteractionEvent) {
-    this.focus(event.data.global.x, event.data.global.y);
+function onPointerMove(this: Live2DModel<any>, event: FederatedMouseEvent) {
+    this.focus(event.globalX, event.globalY);
 }

@@ -425,7 +425,7 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
     }
 
     override _render(renderer: Renderer): void {
-        this.registerInteraction(renderer.plugins.interaction);
+        //this.registerInteraction(renderer.plugins.interaction);
 
         if (!this.wasUpdated) {
             return;
@@ -511,7 +511,7 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
         // the setters will do the cleanup
         this.autoUpdate = false;
 
-        this.unregisterInteraction();
+        this.removeAllListeners();
 
         if (options?.texture) {
             this.textures.forEach(texture => texture.destroy(options.baseTexture));
