@@ -3,6 +3,7 @@
 
 import { Application, Ticker } from 'pixi.js';
 import { Live2DModel } from '../src';
+import { Assets } from '@pixi/assets';
 
 Live2DModel.registerTicker(Ticker);
 
@@ -17,10 +18,16 @@ async function main() {
     });
     (window as any).app = app;
 
-    const model = await Live2DModel.from(modelURL);
-    model.scale = {x:0.25, y:0.25}
+    Assets.load("./Haru/Haru.model3.json").then(resp => {
+        const model = Live2DModel.fromAsset(resp);
+        model.scale = {x:0.25, y:0.25};
+        app.stage.addChild(model);
+    });
 
-    app.stage.addChild(model);
+    // const model = await Live2DModel.from(modelURL);
+    // model.scale = {x:0.25, y:0.25}
+
+    // app.stage.addChild(model);
 }
 
 main().then();

@@ -1,8 +1,8 @@
 import { InternalModel, ModelSettings, MotionPriority } from '@/cubism-common';
-import { MotionManagerOptions } from '@/cubism-common/MotionManager';
+import { MotionManagerOptions, MotionPreloadStrategy } from '@/cubism-common/MotionManager';
 import type { Live2DFactoryOptions } from '@/factory/Live2DFactory';
 import { Live2DFactory } from '@/factory/Live2DFactory';
-import { Renderer, Texture } from '@pixi/core';
+import { Renderer, Texture, extensions } from '@pixi/core';
 import { Container } from '@pixi/display';
 import { Matrix, ObservablePoint, Point, Rectangle } from '@pixi/math';
 import type { Ticker } from '@pixi/ticker';
@@ -10,6 +10,9 @@ import { InteractionMixin } from './InteractionMixin';
 import { Live2DTransform } from './Live2DTransform';
 import { JSONObject } from './types/helpers';
 import { applyMixins, logger } from './utils';
+import { Cubism4Loader, IModelData } from './loader';
+
+extensions.add(Cubism4Loader);
 
 export interface Live2DModelOptions extends MotionManagerOptions {
     /**
@@ -83,6 +86,55 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
         const model = new this(options) as InstanceType<M>;
 
         Live2DFactory.setupLive2DModel(model, source, options).then(options?.onLoad).catch(options?.onError);
+
+        return model;
+    }
+
+    static fromAsset(modelData: IModelData, options?: Live2DModelOptions){
+        const model = new this(options);
+
+        const runtime = Live2DFactory.findRuntime(modelData.settings);
+        if(!runtime){
+            throw new Error("Unable to find Live 2D runtime.");
+        }
+
+        runtime.ready().then(() => {
+            const settings = runtime.createModelSettings(structuredClone(modelData.settings));
+            const coreModel = runtime.createCoreModel(modelData.moc);
+            const internalModel = runtime.createInternalModel(coreModel, settings, {motionPreload: MotionPreloadStrategy.NONE});
+            model.internalModel = internalModel;
+
+            model.init();
+
+            // Add textures
+            model.textures = modelData.textures.map(texture => {
+                return texture.clone();
+            });
+
+            // Add motions
+            const motions = structuredClone(modelData.motions);
+            const motionManager = internalModel.motionManager;
+            for(const motionGroup in motions){
+                for(let i =0; i < motions[motionGroup].length; i++){
+                    motionManager.motionGroups[motionGroup][i] = motionManager.createMotion(motions[motionGroup][i], motionGroup, motions[motionGroup][i]);
+                }
+            }
+
+            // Add expressions
+            if(modelData.expressions){
+                const expressions = structuredClone(modelData.expressions);
+                const expressionManager = internalModel.motionManager.expressionManager;
+                for(const expressionIndex in modelData.expressions){
+                    expressionManager!.expressions[expressionIndex] =  expressionManager?.createExpression(expressions[expressionIndex], modelData.settings.FileReferences.Expressions![expressionIndex]);
+                }
+            }
+
+            // Add poses
+            if(modelData.pose) internalModel.pose = runtime.createPose(coreModel, structuredClone(modelData.pose));
+
+            // Add physics
+            if(modelData.physics) internalModel.physics = runtime.createPhysics(coreModel, structuredClone(modelData.physics));
+        });
 
         return model;
     }
