@@ -6,6 +6,8 @@ import { SoundManager } from '@/cubism-common/SoundManager';
 import { logger } from '@/utils';
 import { EventEmitter } from '@pixi/utils';
 import { JSONObject, Mutable } from '../types/helpers';
+import { PlayOptions, Sound } from '@pixi/sound';
+import { WebAudioMedia } from '@pixi/sound/lib/webaudio';
 
 export interface MotionManagerOptions {
     /**
@@ -111,6 +113,17 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      */
     destroyed = false;
 
+    private _playingSound = false;
+    private _currentAnalyser: AnalyserNode;
+
+    public get playingSound(){
+        return this._playingSound;
+    }
+
+    public get currentAnalyser(){
+        return this._currentAnalyser;
+    }
+
     protected constructor(settings: ModelSettings, options?: MotionManagerOptions) {
         super();
         this.settings = settings;
@@ -209,6 +222,36 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
         throw new Error('Not implemented.');
     }
 
+    /**
+     * Lip sync a sound.
+     * @param sound The sound to lip sync
+     * @param options Sound options
+     * @param expression Epression to use while speaking
+     */
+    speak(sound: Sound, options?: PlayOptions, expression?: number | string,){
+        if (!config.sound) return;
+
+        this._currentAnalyser = (sound.media as WebAudioMedia).nodes.analyser;
+
+        if (this.state.shouldOverrideExpression()) {
+            this.expressionManager && this.expressionManager.resetExpression();
+        }
+        if (expression && this.expressionManager){
+            this.expressionManager.setExpression(expression)
+        }
+
+        const passedComplete = options?.complete;
+        const complete = (s: Sound) => {
+            if(passedComplete) passedComplete(s);
+            this._playingSound = false;
+            this._currentAnalyser = undefined;
+            expression && this.expressionManager && this.expressionManager.resetExpression()
+        };
+        options.complete = complete;
+
+        sound.play(options);
+        this._playingSound = true;
+    }
 
     /**
      * Only play sound with lip sync /*new in 1.0.3*
@@ -470,9 +513,8 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * Stop current audio playback and lipsync
      */
     stopSpeaking(): void {
-        if (this.currentAudio) {
-            SoundManager.dispose(this.currentAudio);
-            this.currentAudio = undefined;
+        if(this.currentAnalyser){
+            this._currentAnalyser = undefined;
         }
     }
 
@@ -520,8 +562,15 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * 
      */
      mouthSync(): number {
-        if (this.currentAnalyzer) {
-            return SoundManager.analyze(this.currentAnalyzer);
+        if(this.currentAnalyser){
+            let pcmData = new Float32Array(this.currentAnalyser.fftSize);
+            let sumSquares = 0.0;
+            this.currentAnalyser.getFloatTimeDomainData(pcmData);
+
+            for(const amplitude of pcmData){
+                sumSquares += amplitude*amplitude;
+            }
+            return parseFloat(Math.sqrt((sumSquares / pcmData.length) * 20).toFixed(1));
         } else {
             return 0;
         }

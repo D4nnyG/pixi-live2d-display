@@ -215,7 +215,7 @@ export class Cubism4InternalModel extends InternalModel {
         this.updateNaturalMovements(dt * 1000, now * 1000);
 
         // TODO: Add lip sync API
-        if (this.lipSync && this.motionManager.currentAudio) {
+        if (this.lipSync && this.motionManager.playingSound) {
             //let value = parseFloat(Math.random().toFixed(1));
             let value = this.motionManager.mouthSync()
             let min_ = 0;

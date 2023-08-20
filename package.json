@@ -60,7 +60,8 @@
     "@pixi/utils": "^7.3.0-rc.2",
     "@pixi/events": "^7.3.0-rc.2",
     "@pixi/text": "^7.3.0-rc.2",
-    "@pixi/graphics": "^7.3.0-rc.2"
+    "@pixi/graphics": "^7.3.0-rc.2",
+    "@pixi/sound": "^5"
   },
   "devDependencies": {
     "@types/chai": "^4.3.1",
@@ -91,6 +92,12 @@
   "dependencies": {
     
     "gh-pages": "^4.0.0"
+  },
+  "overrides": {
+    "@pixi/sound":{
+      "@pixi/core": "^7.3.0-rc.2",
+      "@pixi/assets":"^7.3.0-rc.2"
+    }
   },
   "packageManager": "yarn@1.22.19"
 }

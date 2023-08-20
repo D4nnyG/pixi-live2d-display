@@ -4,6 +4,7 @@
 import { Application, Ticker } from 'pixi.js';
 import { Live2DModel } from '../src';
 import { Assets } from '@pixi/assets';
+import { sound } from "@pixi/sound";
 
 Live2DModel.registerTicker(Ticker);
 
@@ -18,6 +19,8 @@ async function main() {
     const { renderer } = app;
     (window as any).app = app;
     (window as any).renderer = renderer;
+    (window as any).sound = sound;
+    (window as any).assets = Assets;
 
     Assets.load("./Haru/Haru.model3.json").then(resp => {
         const model = Live2DModel.fromAsset(resp);

@@ -11,6 +11,7 @@ import { Live2DTransform } from './Live2DTransform';
 import { JSONObject } from './types/helpers';
 import { applyMixins, logger } from './utils';
 import { Cubism4Loader, IModelData } from './loader';
+import { PlayOptions, Sound } from '@pixi/sound';
 
 extensions.add(Cubism4Loader);
 
@@ -276,6 +277,15 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
         return this.internalModel.motionManager.stopAllMotions();
     }
 
+    /**
+     * Lip sync a sound.
+     * @param sound The sound to lip sync
+     * @param options Sound options
+     * @param expression Epression to use while speaking
+     */
+    speak(sound: Sound, options?: PlayOptions, expression?: number | string){
+        this.internalModel.motionManager.speak(sound, options, expression);
+    }
 
     /**
      * Shorthand to start speaking a sound with an expression. /*new in 1.0.3*
@@ -284,9 +294,9 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
      * @param expression - In case you want to mix up a expression while playing sound (bind with Model.expression())
      * @returns Promise that resolves with true if the sound is playing, false if it's not
      */
-    speak(sound: string, volume?: number, expression?: number | string): Promise<boolean> {
-        return this.internalModel.motionManager.speakUp(sound, volume, expression);
-    }
+    // speak(sound: string, volume?: number, expression?: number | string): Promise<boolean> {
+    //     return this.internalModel.motionManager.speakUp(sound, volume, expression);
+    // }
 
     
     /**
