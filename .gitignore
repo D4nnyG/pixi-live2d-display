@@ -5,6 +5,7 @@ core
 
 # Haru
 playground/Haru
+playground/model
 
 # artifacts
 /build

@@ -10,10 +10,13 @@ import { InteractionMixin } from './InteractionMixin';
 import { Live2DTransform } from './Live2DTransform';
 import { JSONObject } from './types/helpers';
 import { applyMixins, logger } from './utils';
-import { Cubism4Loader, IModelData } from './loader';
+import { ICubism4ModelData, cubism4Load, cubism2Load, ICubismModelData, ICubism2ModelData } from './loader';
 import { PlayOptions, Sound } from '@pixi/sound';
+import { config } from './config';
+import { Live2DExpression } from './cubism2';
 
-extensions.add(Cubism4Loader);
+extensions.add(cubism4Load);
+extensions.add(cubism2Load);
 
 export interface Live2DModelOptions extends MotionManagerOptions {
     /**
@@ -91,7 +94,7 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
         return model;
     }
 
-    static fromAsset(modelData: IModelData, options?: Live2DModelOptions){
+    static fromAsset(modelData: ICubismModelData, options?: Live2DModelOptions){
         const model = new this(options);
 
         const runtime = Live2DFactory.findRuntime(modelData.settings);
@@ -100,41 +103,75 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
         }
 
         runtime.ready().then(() => {
+            // Settings
             const settings = runtime.createModelSettings(structuredClone(modelData.settings));
+
+            // Model
             const coreModel = runtime.createCoreModel(modelData.moc);
             const internalModel = runtime.createInternalModel(coreModel, settings, {motionPreload: MotionPreloadStrategy.NONE});
             model.internalModel = internalModel;
-
             model.init();
 
-            // Add textures
+            // Textures
+            // model.textures = settings.textures.map(url => {
+            //     return Texture.from("model/22/" + url)
+            //     return new Texture();
+            // })
             model.textures = modelData.textures.map(texture => {
+                return new Texture(texture.baseTexture);
                 return texture.clone();
             });
 
-            // Add motions
-            const motions = structuredClone(modelData.motions);
-            const motionManager = internalModel.motionManager;
-            for(const motionGroup in motions){
-                for(let i =0; i < motions[motionGroup].length; i++){
-                    motionManager.motionGroups[motionGroup][i] = motionManager.createMotion(motions[motionGroup][i], motionGroup, motions[motionGroup][i]);
-                }
-            }
-
-            // Add expressions
-            if(modelData.expressions){
-                const expressions = structuredClone(modelData.expressions);
-                const expressionManager = internalModel.motionManager.expressionManager;
-                for(const expressionIndex in modelData.expressions){
-                    expressionManager!.expressions[expressionIndex] =  expressionManager?.createExpression(expressions[expressionIndex], modelData.settings.FileReferences.Expressions![expressionIndex]);
-                }
-            }
-
-            // Add poses
+            // Poses
             if(modelData.pose) internalModel.pose = runtime.createPose(coreModel, structuredClone(modelData.pose));
 
-            // Add physics
+            // Physics
             if(modelData.physics) internalModel.physics = runtime.createPhysics(coreModel, structuredClone(modelData.physics));
+
+            
+            // Motions and Expression
+            if(runtime.version === 2){
+                if(modelData.motions){
+                    const motions = structuredClone((modelData as ICubism2ModelData).motions);
+                    const motionManager = internalModel.motionManager;
+                    for(const motionGroup in motions){
+                        const defaultFade = motionGroup === "idle" ? config.idleMotionFadingDuration : config.motionFadingDuration;
+                        for(let i =0; i < motions[motionGroup].length; i++){
+                            const motion = Live2DMotion.loadMotion(motions[motionGroup][i]);
+                            motion.setFadeIn(motionManager.motionGroups[motionGroup][i]?.fade_in ?? defaultFade);
+                            motion.setFadeOut(motionManager.motionGroups[motionGroup][i]?.fade_out ?? defaultFade);
+                            motionManager.motionGroups[motionGroup][i] = motion;
+                        }
+                    }
+                }
+
+                if(modelData.expressions){
+                    const expressions = structuredClone((modelData as ICubism2ModelData).expressions);
+                    const expressionManager = internalModel.motionManager.expressionManager;
+                    for(const expressionIndex in modelData.expressions){
+                        expressionManager.expressions[expressionIndex] = new Live2DExpression(expressions[expressionIndex]);
+                    }
+                }
+
+
+            } else {
+                if(modelData.motions){
+                    const motions = structuredClone(modelData.motions);
+                    const motionManager = internalModel.motionManager;
+                    for(const motionGroup in motions){
+                        for(let i =0; i < motions[motionGroup].length; i++){
+                            motionManager.motionGroups[motionGroup][i] = motionManager.createMotion(motions[motionGroup][i], motionGroup, motions[motionGroup][i]);
+                        }
+                    }
+                }
+                if(modelData.expressions){
+                    const expressions = structuredClone(modelData.expressions);
+                    const expressionManager = internalModel.motionManager.expressionManager;
+                    for(const expressionIndex in modelData.expressions){
+                        expressionManager.expressions[expressionIndex] =  expressionManager?.createExpression(expressions[expressionIndex], (modelData as ICubism4ModelData).settings.FileReferences.Expressions![expressionIndex]);
+                    }
+                }
+            }
         });
 
         return model;
@@ -283,8 +320,8 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
      * @param options Sound options
      * @param expression Epression to use while speaking
      */
-    speak(sound: Sound, options?: PlayOptions, expression?: number | string){
-        this.internalModel.motionManager.speak(sound, options, expression);
+    speak(sound: Sound, options: PlayOptions & {expression?: number | string} = {}){
+        this.internalModel.motionManager.speak(sound, options);
     }
 
     /**

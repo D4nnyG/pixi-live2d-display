@@ -228,7 +228,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * @param options Sound options
      * @param expression Epression to use while speaking
      */
-    speak(sound: Sound, options?: PlayOptions, expression?: number | string,){
+    speak(sound: Sound, options: PlayOptions & {expression?: number | string} = {}){
         if (!config.sound) return;
 
         this._currentAnalyser = (sound.media as WebAudioMedia).nodes.analyser;
@@ -236,8 +236,8 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
         if (this.state.shouldOverrideExpression()) {
             this.expressionManager && this.expressionManager.resetExpression();
         }
-        if (expression && this.expressionManager){
-            this.expressionManager.setExpression(expression)
+        if (options.expression && this.expressionManager){
+            this.expressionManager.setExpression(options.expression)
         }
 
         const passedComplete = options?.complete;
@@ -245,7 +245,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
             if(passedComplete) passedComplete(s);
             this._playingSound = false;
             this._currentAnalyser = undefined;
-            expression && this.expressionManager && this.expressionManager.resetExpression()
+            options.expression && this.expressionManager && this.expressionManager.resetExpression()
         };
         options.complete = complete;
 

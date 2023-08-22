@@ -228,7 +228,7 @@ export class Cubism2InternalModel extends InternalModel {
         
         // CHECK lip sync API
         // and IF audio is playing
-        if (this.lipSync && this.motionManager.currentAudio) {
+        if (this.lipSync && this.motionManager.playingSound) {
             //let value = parseFloat(Math.random().toFixed(1));
             let value = this.motionManager.mouthSync()
             let min_ = 0;
