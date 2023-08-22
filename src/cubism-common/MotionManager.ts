@@ -36,7 +36,7 @@ export enum MotionPreloadStrategy {
     NONE = 'NONE',
 }
 
-type SpeakOptions = PlayOptions & {expression?: number | string};
+export type SpeakOptions = PlayOptions & {expression?: number | string};
 
 /**
  * Handles the motion playback.
@@ -90,35 +90,32 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
     state = new MotionState();
 
     /**
-     * Audio element of the current motion if a sound file is defined with it.
-     */
-    currentAudio?: HTMLAudioElement;
-
-    /**
-     * Analyzer element for the current sound being played.
-     */
-    currentAnalyzer?: AnalyserNode;
-
-    /**
-     * Context element for the current sound being played.
-     */
-    currentContext?: AudioContext;
-
-    /**
      * Flags there's a motion playing.
      */
-    playing = false;
+    private _motionActive = false;
+
+    public get motionActive(){
+        return this._motionActive;
+    }
 
     /**
      * Flags the instances has been destroyed.
      */
     destroyed = false;
 
+    /**
+     * Speak flags
+     */
     private _playingSound = false;
+    private _currentSound: Sound;
     private _currentAnalyser: AnalyserNode;
 
     public get playingSound(){
         return this._playingSound;
+    }
+
+    public get currentSound(){
+        return this._currentSound;
     }
 
     public get currentAnalyser(){
@@ -232,6 +229,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
     speak(sound: Sound, options: SpeakOptions = {}){
         if (!config.sound) return;
 
+        this._currentSound = sound;
         this._currentAnalyser = (sound.media as WebAudioMedia).nodes.analyser;
 
         if (this.state.shouldOverrideExpression()) {
@@ -264,31 +262,23 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * @param expression - In case you want to mix up a expression while playing sound (bind with Model.expression())
      * @return Promise that resolves with true if the motion is successfully started, with false otherwise.
      */
-    async startMotion(group: string, index: number, priority = MotionPriority.NORMAL, sound?: Sound, soundOptions: SpeakOptions = {}): Promise<boolean> {
+    async startMotion(group: string, index: number, priority = MotionPriority.NORMAL, sound?: Sound, speakOptions: SpeakOptions = {}): Promise<boolean> {
         // Does not start a new motion if audio is still playing
-        if(this.currentAudio){
-            if (!this.currentAudio.ended){
-                return false;
-            }
-        }
+        if (this.currentSound?.isPlaying) return false;
 
-        if (!this.state.reserve(group, index, priority)) {
-            return false;
-        }
+        if (!this.state.reserve(group, index, priority)) return false;
 
         const definition = this.definitions[group]?.[index];
 
-        if (!definition) {
-            return false;
-        }
+        if (!definition) return false;
+
+        const motion = await this.loadMotion(group, index);
 
         let soundInstance: IMediaInstance;
         if (config.sound && sound){
-            soundInstance = this.speak(sound, soundOptions) as IMediaInstance;
+            soundInstance = await this.speak(sound, speakOptions)
             priority = MotionPriority.FORCE
         }
-
-        const motion = await this.loadMotion(group, index);
 
         if (!this.state.start(motion, group, index, priority)) {
             if (soundInstance) {
@@ -298,20 +288,19 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
             return false;
         }
 
-        
         if (this.state.shouldOverrideExpression()) {
             this.expressionManager && this.expressionManager.resetExpression();
         }
 
         logger.log(this.tag, 'Start motion:', this.getMotionName(definition));
 
-        this.emit('motionStart', group, index, sound);
+        this.emit('motionStart', group, index, soundInstance, sound);
         
-        if (soundOptions.expression && this.expressionManager){
-            this.expressionManager.setExpression(soundOptions.expression)
+        if (speakOptions.expression && this.expressionManager){
+            this.expressionManager.setExpression(speakOptions.expression)
         }
 
-        this.playing = true;
+        this._motionActive = true;
 
         this._startMotion(motion!);
 
@@ -375,8 +364,8 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      */
     update(model: object, now: DOMHighResTimeStamp): boolean {
         if (this.isFinished()) {
-            if (this.playing) {
-                this.playing = false;
+            if (this.motionActive) {
+                this._motionActive = false;
                 this.emit('motionFinish');
             }
 
@@ -437,7 +426,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
 
     /**
      * Creates a Motion from the data.
-     * @param data - Content of the motion file. The format must be consistent with {@link MotionManager#motionDataType}.
+     * @param data - Content of the motion file. The format must be consistent with {@link MotionManager.motionDataType}.
      * @param group - The motion group.
      * @param definition - The motion definition.
      * @return The created Motion.

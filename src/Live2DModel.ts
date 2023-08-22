@@ -1,5 +1,5 @@
 import { InternalModel, ModelSettings, MotionPriority } from '@/cubism-common';
-import { MotionManagerOptions, MotionPreloadStrategy } from '@/cubism-common/MotionManager';
+import { MotionManagerOptions, MotionPreloadStrategy, SpeakOptions } from '@/cubism-common/MotionManager';
 import type { Live2DFactoryOptions } from '@/factory/Live2DFactory';
 import { Live2DFactory } from '@/factory/Live2DFactory';
 import { Renderer, Texture, extensions } from '@pixi/core';
@@ -300,10 +300,10 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
      * @param expression - In case you want to mix up a expression while playing sound (bind with Model.expression())
      * @return Promise that resolves with true if the motion is successfully started, with false otherwise.
      */
-    motion(group: string, index?: number, priority?: MotionPriority, sound?: string, volume?:number, expression?: number | string): Promise<boolean> {
+    motion(group: string, index?: number, priority?: MotionPriority, sound?: Sound, soundOptions: SpeakOptions = {}): Promise<boolean> {
         return index === undefined
             ? this.internalModel.motionManager.startRandomMotion(group, priority)
-            : this.internalModel.motionManager.startMotion(group, index, priority, sound, volume, expression);
+            : this.internalModel.motionManager.startMotion(group, index, priority, sound, soundOptions);
     }
 
     
@@ -323,18 +323,6 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
     speak(sound: Sound, options: PlayOptions & {expression?: number | string} = {}){
         this.internalModel.motionManager.speak(sound, options);
     }
-
-    /**
-     * Shorthand to start speaking a sound with an expression. /*new in 1.0.3*
-     * @param sound - The audio url to file or base64 content 
-     * @param volume - Volume of the sound (0-1) /*new in 1.0.4*
-     * @param expression - In case you want to mix up a expression while playing sound (bind with Model.expression())
-     * @returns Promise that resolves with true if the sound is playing, false if it's not
-     */
-    // speak(sound: string, volume?: number, expression?: number | string): Promise<boolean> {
-    //     return this.internalModel.motionManager.speakUp(sound, volume, expression);
-    // }
-
     
     /**
      * Stop current audio playback and lipsync
