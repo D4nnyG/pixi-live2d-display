@@ -2,11 +2,10 @@ import { config } from '@/config';
 import { ExpressionManager } from '@/cubism-common/ExpressionManager';
 import { ModelSettings } from '@/cubism-common/ModelSettings';
 import { MotionPriority, MotionState } from '@/cubism-common/MotionState';
-import { SoundManager } from '@/cubism-common/SoundManager';
 import { logger } from '@/utils';
 import { EventEmitter } from '@pixi/utils';
 import { JSONObject, Mutable } from '../types/helpers';
-import { PlayOptions, Sound } from '@pixi/sound';
+import { IMediaInstance, PlayOptions, Sound } from '@pixi/sound';
 import { WebAudioMedia } from '@pixi/sound/lib/webaudio';
 
 export interface MotionManagerOptions {
@@ -36,6 +35,8 @@ export enum MotionPreloadStrategy {
     /** No preload. */
     NONE = 'NONE',
 }
+
+type SpeakOptions = PlayOptions & {expression?: number | string};
 
 /**
  * Handles the motion playback.
@@ -228,7 +229,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * @param options Sound options
      * @param expression Epression to use while speaking
      */
-    speak(sound: Sound, options: PlayOptions & {expression?: number | string} = {}){
+    speak(sound: Sound, options: SpeakOptions = {}){
         if (!config.sound) return;
 
         this._currentAnalyser = (sound.media as WebAudioMedia).nodes.analyser;
@@ -249,105 +250,8 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
         };
         options.complete = complete;
 
-        sound.play(options);
         this._playingSound = true;
-    }
-
-    /**
-     * Only play sound with lip sync /*new in 1.0.3*
-     * @param sound - The audio url to file or base64 content 
-     * @param volume - Volume of the sound (0-1) /*new in 1.0.4*
-     * @param expression - In case you want to mix up a expression while playing sound (bind with Model.expression())
-     * @returns Promise that resolves with true if the sound is playing, false if it's not
-     */
-    async speakUp(sound: string, volume?: number, expression?: number | string) {
-        if (!config.sound) {
-            return false;
-        }
-
-
-        
-        let audio: HTMLAudioElement | undefined;
-        let analyzer: AnalyserNode | undefined;
-        let context: AudioContext | undefined;
-
-
-        if(this.currentAudio){
-            if (!this.currentAudio.ended){
-                return false;
-            }
-        }
-        let soundURL: string | undefined;
-        const isBase64Content = sound && sound.startsWith('data:audio/wav;base64');
-
-        if(sound && !isBase64Content){
-            var A = document.createElement('a');
-            A.href = sound;
-            sound = A.href; // This should be the absolute url
-            // since resolveURL is not working for some reason
-            soundURL = sound;
-        }
-        else {
-            soundURL = 'data:audio/wav;base64';
-        }
-        const isUrlPath = sound && (sound.startsWith('http') || sound.startsWith('blob'));
-        let file: string | undefined;
-        if (isUrlPath || isBase64Content) {
-            file = sound;
-        }
-        const that = this;
-        if (file) {
-            try {
-                // start to load the audio
-                audio = SoundManager.add(
-                    file,
-                    () => {expression && that.expressionManager && that.expressionManager.resetExpression();
-                            that.currentAudio = undefined}, // reset expression when audio is done
-                    () => {expression && that.expressionManager && that.expressionManager.resetExpression();
-                        that.currentAudio = undefined} // on error
-                );
-                this.currentAudio = audio!;
-
-                let _volume: number = 1;
-                if (volume !== undefined){
-                    _volume = volume;
-                }
-                SoundManager.volume = _volume;
-
-                // Add context
-                context = SoundManager.addContext(this.currentAudio);
-                this.currentContext = context;
-                
-                // Add analyzer
-                analyzer = SoundManager.addAnalyzer(this.currentAudio, this.currentContext);
-                this.currentAnalyzer = analyzer;
-
-            } catch (e) {
-                logger.warn(this.tag, 'Failed to create audio', soundURL, e);
-            }
-        }
-
-        
-        if (audio) {
-            const readyToPlay = SoundManager.play(audio)
-                .catch(e => logger.warn(this.tag, 'Failed to play audio', audio!.src, e));
-
-            if (config.motionSync) {
-                // wait until the audio is ready
-                await readyToPlay;
-            }
-        }
-        
-        if (this.state.shouldOverrideExpression()) {
-            this.expressionManager && this.expressionManager.resetExpression();
-        }
-        if (expression && this.expressionManager){
-            this.expressionManager.setExpression(expression)
-        }
-
-        this.playing = true;
-
-        return true;
+        return sound.play(options);
     }
 
     /**
@@ -360,7 +264,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * @param expression - In case you want to mix up a expression while playing sound (bind with Model.expression())
      * @return Promise that resolves with true if the motion is successfully started, with false otherwise.
      */
-    async startMotion(group: string, index: number, priority = MotionPriority.NORMAL, sound?: string, volume?: number, expression?: number | string): Promise<boolean> {
+    async startMotion(group: string, index: number, priority = MotionPriority.NORMAL, sound?: Sound, soundOptions: SpeakOptions = {}): Promise<boolean> {
         // Does not start a new motion if audio is still playing
         if(this.currentAudio){
             if (!this.currentAudio.ended){
@@ -378,85 +282,19 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
             return false;
         }
 
-        if (this.currentAudio) {
-            // TODO: reuse the audio?
-            SoundManager.dispose(this.currentAudio);
-        }
-
-        let audio: HTMLAudioElement | undefined;
-        let analyzer: AnalyserNode | undefined;
-        let context: AudioContext | undefined;
-
-        if (config.sound) {
-            const isBase64Content = sound && sound.startsWith('data:audio/wav;base64');
-            if(sound && !isBase64Content){
-                var A = document.createElement('a');
-                A.href = sound;
-                sound = A.href; // This should be the absolute url
-                // since resolveURL is not working for some reason
-            }
-            const isUrlPath = sound && (sound.startsWith('http') || sound.startsWith('blob'));
-            const soundURL = this.getSoundFile(definition);
-            let file = soundURL;
-            if (soundURL) {
-                file = this.settings.resolveURL(soundURL) + "?cache-buster=" + new Date().getTime();
-            }
-            if (isUrlPath || isBase64Content) {
-                file = sound;
-            }
-            const that = this;
-            if (file) {
-                try {
-                    // start to load the audio
-                    audio = SoundManager.add(
-                        file,
-                        () => {expression && that.expressionManager && that.expressionManager.resetExpression();
-                                that.currentAudio = undefined}, // reset expression when audio is done
-                        () => {expression && that.expressionManager && that.expressionManager.resetExpression();
-                            that.currentAudio = undefined} // on error
-                    );
-                    this.currentAudio = audio!;
-
-                    let _volume: number = 1;
-                    if (volume !== undefined){
-                        _volume = volume;
-                    }
-                    SoundManager.volume = _volume;
-
-                    // Add context
-                    context = SoundManager.addContext(this.currentAudio);
-                    this.currentContext = context;
-                    
-                    // Add analyzer
-                    analyzer = SoundManager.addAnalyzer(this.currentAudio, this.currentContext);
-                    this.currentAnalyzer = analyzer;
-
-                } catch (e) {
-                    logger.warn(this.tag, 'Failed to create audio', soundURL, e);
-                }
-            }
+        let soundInstance: IMediaInstance;
+        if (config.sound && sound){
+            soundInstance = this.speak(sound, soundOptions) as IMediaInstance;
+            priority = MotionPriority.FORCE
         }
 
         const motion = await this.loadMotion(group, index);
 
-        if (audio) {
-            priority = 3; // FORCED: MAKE SURE SOUND IS PLAYED
-            
-            const readyToPlay = SoundManager.play(audio)
-                .catch(e => logger.warn(this.tag, 'Failed to play audio', audio!.src, e));
-
-            if (config.motionSync) {
-                // wait until the audio is ready
-                await readyToPlay;
-            }
-        }
-
         if (!this.state.start(motion, group, index, priority)) {
-            if (audio) {
-                SoundManager.dispose(audio);
-                this.currentAudio = undefined;
+            if (soundInstance) {
+                soundInstance.stop();
+                soundInstance.destroy();
             }
-
             return false;
         }
 
@@ -467,10 +305,10 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
 
         logger.log(this.tag, 'Start motion:', this.getMotionName(definition));
 
-        this.emit('motionStart', group, index, audio);
+        this.emit('motionStart', group, index, sound);
         
-        if (expression && this.expressionManager){
-            this.expressionManager.setExpression(expression)
+        if (soundOptions.expression && this.expressionManager){
+            this.expressionManager.setExpression(soundOptions.expression)
         }
 
         this.playing = true;
@@ -487,7 +325,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * @param sound - The wav url file or base64 content
      * @return Promise that resolves with true if the motion is successfully started, with false otherwise.
      */
-    async startRandomMotion(group: string, priority?: MotionPriority, sound?: string): Promise<boolean> {
+    async startRandomMotion(group: string, priority?: MotionPriority, sound?: Sound): Promise<boolean> {
         const groupDefs = this.definitions[group];
 
         if (groupDefs?.length) {
