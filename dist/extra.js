@@ -12,7 +12,7 @@ var __pow = Math.pow;
       this.strokeWidth = 4;
       this.normalColor = 14883354;
       this.activeColor = 2017330;
-      this.interactive = true;
+      this.eventMode = "static";
       this.on("added", this.init).on("pointermove", this.onPointerMove);
     }
     init() {
@@ -31,7 +31,7 @@ var __pow = Math.pow;
       });
     }
     onPointerMove(e) {
-      const hitAreaNames = this.parent.hitTest(e.data.global.x, e.data.global.y);
+      const hitAreaNames = this.parent.hitTest(e.globalX, e.globalY);
       this.texts.forEach((text2) => {
         text2.visible = hitAreaNames.includes(text2.text);
       });

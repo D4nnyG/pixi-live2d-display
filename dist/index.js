@@ -20,8 +20,8 @@ var __async = (__this, __arguments, generator) => {
   });
 };
 (function(global, factory) {
-  typeof exports === "object" && typeof module !== "undefined" ? factory(exports, require("@pixi/utils"), require("@pixi/math"), require("@pixi/core"), require("@pixi/display")) : typeof define === "function" && define.amd ? define(["exports", "@pixi/utils", "@pixi/math", "@pixi/core", "@pixi/display"], factory) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, factory((global.PIXI = global.PIXI || {}, global.PIXI.live2d = global.PIXI.live2d || {}), global.PIXI.utils, global.PIXI, global.PIXI, global.PIXI));
-})(this, function(exports2, utils, math, core, display) {
+  typeof exports === "object" && typeof module !== "undefined" ? factory(exports, require("@pixi/utils"), require("@pixi/math"), require("@pixi/core"), require("@pixi/display"), require("@pixi/assets")) : typeof define === "function" && define.amd ? define(["exports", "@pixi/utils", "@pixi/math", "@pixi/core", "@pixi/display", "@pixi/assets"], factory) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, factory((global.PIXI = global.PIXI || {}, global.PIXI.live2d = global.PIXI.live2d || {}), global.PIXI, global.PIXI, global.PIXI, global.PIXI, global.PIXI));
+})(this, function(exports2, utils, math, core, display, assets) {
   "use strict";
   const LOGICAL_WIDTH = 2;
   const LOGICAL_HEIGHT = 2;
@@ -90,17 +90,6 @@ var __async = (__this, __arguments, generator) => {
       });
     });
   }
-  function folderName(url) {
-    let lastSlashIndex = url.lastIndexOf("/");
-    if (lastSlashIndex != -1) {
-      url = url.slice(0, lastSlashIndex);
-    }
-    lastSlashIndex = url.lastIndexOf("/");
-    if (lastSlashIndex !== -1) {
-      url = url.slice(lastSlashIndex + 1);
-    }
-    return url;
-  }
   function remove(array, item) {
     const index = array.indexOf(item);
     if (index !== -1) {
@@ -128,15 +117,13 @@ var __async = (__this, __arguments, generator) => {
           return void 0;
         }
         if (this.expressions[index] === null) {
-          logger.warn(this.tag, `Cannot set expression at [${index}] because it's already failed in loading.`);
+          logger.warn(this.tag, `Expression at [${index}] failed to load.`);
           return void 0;
         }
         if (this.expressions[index]) {
           return this.expressions[index];
         }
-        const expression = yield this._loadExpression(index);
-        this.expressions[index] = expression;
-        return expression;
+        return void 0;
       });
     }
     _loadExpression(index) {
@@ -256,10 +243,10 @@ var __async = (__this, __arguments, generator) => {
         throw new TypeError("The `url` field in settings JSON must be defined as a string.");
       }
       this.url = url2;
-      this.name = folderName(this.url);
+      this.name = utils.path.dirname(this.url);
     }
-    resolveURL(path) {
-      return utils.url.resolve(this.url, path);
+    resolveURL(path2) {
+      return utils.url.resolve(this.url, path2);
     }
     replaceFiles(replacer) {
       this.moc = replacer(this.moc, "moc");
@@ -419,96 +406,6 @@ var __async = (__this, __arguments, generator) => {
       return "";
     }
   }
-  const TAG$2 = "SoundManager";
-  const VOLUME = 0.9;
-  class SoundManager {
-    static get volume() {
-      return this._volume;
-    }
-    static set volume(value) {
-      this._volume = (value > 1 ? 1 : value < 0 ? 0 : value) || 0;
-      this.audios.forEach((audio) => audio.volume = this._volume);
-    }
-    static add(file, onFinish, onError) {
-      const audio = new Audio(file);
-      audio.volume = this._volume;
-      audio.preload = "auto";
-      audio.autoplay = true;
-      audio.crossOrigin = "anonymous";
-      audio.addEventListener("ended", () => {
-        this.dispose(audio);
-        onFinish == null ? void 0 : onFinish();
-      });
-      audio.addEventListener("error", (e) => {
-        this.dispose(audio);
-        logger.warn(TAG$2, `Error occurred on "${file}"`, e.error);
-        onError == null ? void 0 : onError(e.error);
-      });
-      this.audios.push(audio);
-      return audio;
-    }
-    static play(audio) {
-      return new Promise((resolve, reject) => {
-        var _a;
-        (_a = audio.play()) == null ? void 0 : _a.catch((e) => {
-          audio.dispatchEvent(new ErrorEvent("error", { error: e }));
-          reject(e);
-        });
-        if (audio.readyState === audio.HAVE_ENOUGH_DATA) {
-          resolve();
-        } else {
-          audio.addEventListener("canplaythrough", resolve);
-        }
-      });
-    }
-    static addContext(audio) {
-      const context = new AudioContext();
-      this.contexts.push(context);
-      return context;
-    }
-    static addAnalyzer(audio, context) {
-      const source = context.createMediaElementSource(audio);
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.minDecibels = -90;
-      analyser.maxDecibels = -10;
-      analyser.smoothingTimeConstant = 0.85;
-      source.connect(analyser);
-      analyser.connect(context.destination);
-      this.analysers.push(analyser);
-      return analyser;
-    }
-    static analyze(analyser) {
-      if (analyser != void 0) {
-        let pcmData = new Float32Array(analyser.fftSize);
-        let sumSquares = 0;
-        analyser.getFloatTimeDomainData(pcmData);
-        for (const amplitude of pcmData) {
-          sumSquares += amplitude * amplitude;
-        }
-        return parseFloat(Math.sqrt(sumSquares / pcmData.length * 20).toFixed(1));
-      } else {
-        return parseFloat(Math.random().toFixed(1));
-      }
-    }
-    static dispose(audio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      remove(this.audios, audio);
-    }
-    static destroy() {
-      for (let i = this.contexts.length - 1; i >= 0; i--) {
-        this.contexts[i].close();
-      }
-      for (let i = this.audios.length - 1; i >= 0; i--) {
-        this.dispose(this.audios[i]);
-      }
-    }
-  }
-  SoundManager.audios = [];
-  SoundManager.analysers = [];
-  SoundManager.contexts = [];
-  SoundManager._volume = VOLUME;
   var MotionPreloadStrategy = /* @__PURE__ */ ((MotionPreloadStrategy2) => {
     MotionPreloadStrategy2["ALL"] = "ALL";
     MotionPreloadStrategy2["IDLE"] = "IDLE";
@@ -520,11 +417,25 @@ var __async = (__this, __arguments, generator) => {
       super();
       this.motionGroups = {};
       this.state = new MotionState();
-      this.playing = false;
+      this._motionActive = false;
       this.destroyed = false;
+      this._playingSound = false;
+      this._sounds = {};
       this.settings = settings;
       this.tag = `MotionManager(${settings.name})`;
       this.state.tag = this.tag;
+    }
+    get motionActive() {
+      return this._motionActive;
+    }
+    get playingSound() {
+      return this._playingSound;
+    }
+    get currentSound() {
+      return this._currentSound;
+    }
+    get currentAnalyser() {
+      return this._currentAnalyser;
     }
     init(options) {
       if (options == null ? void 0 : options.idleMotionGroup) {
@@ -559,171 +470,70 @@ var __async = (__this, __arguments, generator) => {
     }
     loadMotion(group, index) {
       return __async(this, null, function* () {
-        var _a;
-        if (!((_a = this.definitions[group]) == null ? void 0 : _a[index])) {
+        var _a2;
+        if (!((_a2 = this.definitions[group]) == null ? void 0 : _a2[index])) {
           logger.warn(this.tag, `Undefined motion at "${group}"[${index}]`);
           return void 0;
         }
         if (this.motionGroups[group][index] === null) {
-          logger.warn(this.tag, `Cannot start motion at "${group}"[${index}] because it's already failed in loading.`);
+          logger.warn(this.tag, `Motion at "${group}"[${index}] failed to load.`);
           return void 0;
         }
         if (this.motionGroups[group][index]) {
           return this.motionGroups[group][index];
         }
-        const motion = yield this._loadMotion(group, index);
-        if (this.destroyed) {
-          return;
-        }
-        this.motionGroups[group][index] = motion != null ? motion : null;
-        return motion;
+        return void 0;
       });
     }
-    _loadMotion(group, index) {
-      throw new Error("Not implemented.");
-    }
-    speakUp(sound, volume, expression) {
-      return __async(this, null, function* () {
-        if (!exports2.config.sound) {
-          return false;
-        }
-        let audio;
-        let analyzer;
-        let context;
-        if (this.currentAudio) {
-          if (!this.currentAudio.ended) {
-            return false;
-          }
-        }
-        let soundURL;
-        const isBase64Content = sound && sound.startsWith("data:audio/wav;base64");
-        if (sound && !isBase64Content) {
-          var A = document.createElement("a");
-          A.href = sound;
-          sound = A.href;
-          soundURL = sound;
-        } else {
-          soundURL = "data:audio/wav;base64";
-        }
-        const isUrlPath = sound && (sound.startsWith("http") || sound.startsWith("blob"));
-        let file;
-        if (isUrlPath || isBase64Content) {
-          file = sound;
-        }
-        const that = this;
-        if (file) {
-          try {
-            audio = SoundManager.add(file, () => {
-              expression && that.expressionManager && that.expressionManager.resetExpression();
-              that.currentAudio = void 0;
-            }, () => {
-              expression && that.expressionManager && that.expressionManager.resetExpression();
-              that.currentAudio = void 0;
-            });
-            this.currentAudio = audio;
-            let _volume = 1;
-            if (volume !== void 0) {
-              _volume = volume;
-            }
-            SoundManager.volume = _volume;
-            context = SoundManager.addContext(this.currentAudio);
-            this.currentContext = context;
-            analyzer = SoundManager.addAnalyzer(this.currentAudio, this.currentContext);
-            this.currentAnalyzer = analyzer;
-          } catch (e) {
-            logger.warn(this.tag, "Failed to create audio", soundURL, e);
-          }
-        }
-        if (audio) {
-          const readyToPlay = SoundManager.play(audio).catch((e) => logger.warn(this.tag, "Failed to play audio", audio.src, e));
-          if (exports2.config.motionSync) {
-            yield readyToPlay;
-          }
-        }
-        if (this.state.shouldOverrideExpression()) {
-          this.expressionManager && this.expressionManager.resetExpression();
-        }
-        if (expression && this.expressionManager) {
-          this.expressionManager.setExpression(expression);
-        }
-        this.playing = true;
-        return true;
-      });
+    speak(sound, options = {}) {
+      if (!exports2.config.sound)
+        return;
+      this._currentSound = sound;
+      this._currentAnalyser = sound.media.nodes.analyser;
+      if (this.state.shouldOverrideExpression()) {
+        this.expressionManager && this.expressionManager.resetExpression();
+      }
+      if (options.expression && this.expressionManager) {
+        this.expressionManager.setExpression(options.expression);
+      }
+      const passedComplete = options == null ? void 0 : options.complete;
+      const complete = (s) => {
+        if (passedComplete)
+          passedComplete(s);
+        this._playingSound = false;
+        this._currentSound = void 0;
+        this._currentAnalyser = void 0;
+        options.expression && this.expressionManager && this.expressionManager.resetExpression();
+      };
+      options.complete = complete;
+      this._playingSound = true;
+      return sound.play(options);
     }
     startMotion(_0, _1) {
-      return __async(this, arguments, function* (group, index, priority = MotionPriority.NORMAL, sound, volume, expression) {
-        var _a;
-        if (this.currentAudio) {
-          if (!this.currentAudio.ended) {
-            return false;
-          }
-        }
-        if (!this.state.reserve(group, index, priority)) {
+      return __async(this, arguments, function* (group, index, priority = MotionPriority.NORMAL, sound, speakOptions = {}) {
+        var _a2, _b2, _c;
+        if (this.playingSound)
           return false;
-        }
-        const definition = (_a = this.definitions[group]) == null ? void 0 : _a[index];
-        if (!definition) {
+        if (!this.state.reserve(group, index, priority))
           return false;
-        }
-        if (this.currentAudio) {
-          SoundManager.dispose(this.currentAudio);
-        }
-        let audio;
-        let analyzer;
-        let context;
-        if (exports2.config.sound) {
-          const isBase64Content = sound && sound.startsWith("data:audio/wav;base64");
-          if (sound && !isBase64Content) {
-            var A = document.createElement("a");
-            A.href = sound;
-            sound = A.href;
-          }
-          const isUrlPath = sound && (sound.startsWith("http") || sound.startsWith("blob"));
-          const soundURL = this.getSoundFile(definition);
-          let file = soundURL;
-          if (soundURL) {
-            file = this.settings.resolveURL(soundURL) + "?cache-buster=" + new Date().getTime();
-          }
-          if (isUrlPath || isBase64Content) {
-            file = sound;
-          }
-          const that = this;
-          if (file) {
-            try {
-              audio = SoundManager.add(file, () => {
-                expression && that.expressionManager && that.expressionManager.resetExpression();
-                that.currentAudio = void 0;
-              }, () => {
-                expression && that.expressionManager && that.expressionManager.resetExpression();
-                that.currentAudio = void 0;
-              });
-              this.currentAudio = audio;
-              let _volume = 1;
-              if (volume !== void 0) {
-                _volume = volume;
-              }
-              SoundManager.volume = _volume;
-              context = SoundManager.addContext(this.currentAudio);
-              this.currentContext = context;
-              analyzer = SoundManager.addAnalyzer(this.currentAudio, this.currentContext);
-              this.currentAnalyzer = analyzer;
-            } catch (e) {
-              logger.warn(this.tag, "Failed to create audio", soundURL, e);
-            }
-          }
-        }
+        const definition = (_a2 = this.definitions[group]) == null ? void 0 : _a2[index];
+        if (!definition)
+          return false;
         const motion = yield this.loadMotion(group, index);
-        if (audio) {
-          priority = 3;
-          const readyToPlay = SoundManager.play(audio).catch((e) => logger.warn(this.tag, "Failed to play audio", audio.src, e));
-          if (exports2.config.motionSync) {
-            yield readyToPlay;
+        let soundInstance;
+        if (exports2.config.sound) {
+          if (sound) {
+            soundInstance = yield this.speak(sound, speakOptions);
+            priority = MotionPriority.FORCE;
+          } else if ((_c = (_b2 = this._sounds) == null ? void 0 : _b2[group]) == null ? void 0 : _c[index]) {
+            soundInstance = yield this.speak(this._sounds[group][index], speakOptions);
+            priority = MotionPriority.FORCE;
           }
         }
         if (!this.state.start(motion, group, index, priority)) {
-          if (audio) {
-            SoundManager.dispose(audio);
-            this.currentAudio = void 0;
+          if (soundInstance) {
+            soundInstance.stop();
+            soundInstance.destroy();
           }
           return false;
         }
@@ -731,11 +541,11 @@ var __async = (__this, __arguments, generator) => {
           this.expressionManager && this.expressionManager.resetExpression();
         }
         logger.log(this.tag, "Start motion:", this.getMotionName(definition));
-        this.emit("motionStart", group, index, audio);
-        if (expression && this.expressionManager) {
-          this.expressionManager.setExpression(expression);
+        this.emit("motionStart", group, index, soundInstance, sound);
+        if (speakOptions.expression && this.expressionManager) {
+          this.expressionManager.setExpression(speakOptions.expression);
         }
-        this.playing = true;
+        this._motionActive = true;
         this._startMotion(motion);
         return true;
       });
@@ -759,9 +569,8 @@ var __async = (__this, __arguments, generator) => {
       });
     }
     stopSpeaking() {
-      if (this.currentAudio) {
-        SoundManager.dispose(this.currentAudio);
-        this.currentAudio = void 0;
+      if (this.currentAnalyser) {
+        this._currentAnalyser = void 0;
       }
     }
     stopAllMotions() {
@@ -770,14 +579,14 @@ var __async = (__this, __arguments, generator) => {
       this.stopSpeaking();
     }
     update(model, now) {
-      var _a;
+      var _a2;
       if (this.isFinished()) {
-        if (this.playing) {
-          this.playing = false;
+        if (this.motionActive) {
+          this._motionActive = false;
           this.emit("motionFinish");
         }
         if (this.state.shouldOverrideExpression()) {
-          (_a = this.expressionManager) == null ? void 0 : _a.restoreExpression();
+          (_a2 = this.expressionManager) == null ? void 0 : _a2.restoreExpression();
         }
         this.state.complete();
         if (this.state.shouldRequestIdleMotion()) {
@@ -787,18 +596,35 @@ var __async = (__this, __arguments, generator) => {
       return this.updateParameters(model, now);
     }
     mouthSync() {
-      if (this.currentAnalyzer) {
-        return SoundManager.analyze(this.currentAnalyzer);
+      if (this.currentAnalyser) {
+        let pcmData = new Float32Array(this.currentAnalyser.fftSize);
+        let sumSquares = 0;
+        this.currentAnalyser.getFloatTimeDomainData(pcmData);
+        for (const amplitude of pcmData) {
+          sumSquares += amplitude * amplitude;
+        }
+        return parseFloat(Math.sqrt(sumSquares / pcmData.length * 20).toFixed(1));
       } else {
         return 0;
       }
     }
+    registerSound(sound, group, index) {
+      if (!this._sounds[group])
+        this._sounds[group] = [];
+      this._sounds[group][index] = sound;
+    }
     destroy() {
-      var _a;
+      var _a2;
       this.destroyed = true;
       this.emit("destroy");
+      this.stopSpeaking();
       this.stopAllMotions();
-      (_a = this.expressionManager) == null ? void 0 : _a.destroy();
+      for (const group in this._sounds) {
+        this._sounds[group].length = 0;
+        delete this._sounds[group];
+      }
+      this._sounds = void 0;
+      (_a2 = this.expressionManager) == null ? void 0 : _a2.destroy();
       const self2 = this;
       self2.definitions = void 0;
       self2.motionGroups = void 0;
@@ -829,10 +655,13 @@ var __async = (__this, __arguments, generator) => {
       const size = this.getSize();
       self2.originalWidth = size[0];
       self2.originalHeight = size[1];
-      const layout = Object.assign({
-        width: LOGICAL_WIDTH,
-        height: LOGICAL_HEIGHT
-      }, this.getLayout());
+      const layout = Object.assign(
+        {
+          width: LOGICAL_WIDTH,
+          height: LOGICAL_HEIGHT
+        },
+        this.getLayout()
+      );
       this.localTransform.scale(layout.width / LOGICAL_WIDTH, layout.height / LOGICAL_HEIGHT);
       self2.width = this.originalWidth * this.localTransform.a;
       self2.height = this.originalHeight * this.localTransform.d;
@@ -891,831 +720,263 @@ var __async = (__this, __arguments, generator) => {
       this.motionManager = void 0;
     }
   }
-  const TAG$1 = "XHRLoader";
-  class NetworkError extends Error {
-    constructor(message, url, status, aborted = false) {
-      super(message);
-      this.url = url;
-      this.status = status;
-      this.aborted = aborted;
-    }
-  }
-  const _XHRLoader = class {
-    static createXHR(target, url, type, onload, onerror) {
-      const xhr = new XMLHttpRequest();
-      _XHRLoader.allXhrSet.add(xhr);
-      if (target) {
-        let xhrSet = _XHRLoader.xhrMap.get(target);
-        if (!xhrSet) {
-          xhrSet = /* @__PURE__ */ new Set([xhr]);
-          _XHRLoader.xhrMap.set(target, xhrSet);
-        } else {
-          xhrSet.add(xhr);
-        }
-        if (!target.listeners("destroy").includes(_XHRLoader.cancelXHRs)) {
-          target.once("destroy", _XHRLoader.cancelXHRs);
-        }
-      }
-      xhr.open("GET", url);
-      xhr.responseType = type;
-      xhr.onload = () => {
-        if ((xhr.status === 200 || xhr.status === 0) && xhr.response) {
-          onload(xhr.response);
-        } else {
-          xhr.onerror();
-        }
-      };
-      xhr.onerror = () => {
-        logger.warn(TAG$1, `Failed to load resource as ${xhr.responseType} (Status ${xhr.status}): ${url}`);
-        onerror(new NetworkError("Network error.", url, xhr.status));
-      };
-      xhr.onabort = () => onerror(new NetworkError("Aborted.", url, xhr.status, true));
-      xhr.onloadend = () => {
-        var _a;
-        _XHRLoader.allXhrSet.delete(xhr);
-        if (target) {
-          (_a = _XHRLoader.xhrMap.get(target)) == null ? void 0 : _a.delete(xhr);
-        }
-      };
-      return xhr;
-    }
-    static cancelXHRs() {
-      var _a;
-      (_a = _XHRLoader.xhrMap.get(this)) == null ? void 0 : _a.forEach((xhr) => {
-        xhr.abort();
-        _XHRLoader.allXhrSet.delete(xhr);
-      });
-      _XHRLoader.xhrMap.delete(this);
-    }
-    static release() {
-      _XHRLoader.allXhrSet.forEach((xhr) => xhr.abort());
-      _XHRLoader.allXhrSet.clear();
-      _XHRLoader.xhrMap = /* @__PURE__ */ new WeakMap();
-    }
-  };
-  let XHRLoader = _XHRLoader;
-  XHRLoader.xhrMap = /* @__PURE__ */ new WeakMap();
-  XHRLoader.allXhrSet = /* @__PURE__ */ new Set();
-  XHRLoader.loader = (context, next) => {
-    return new Promise((resolve, reject) => {
-      const xhr = _XHRLoader.createXHR(context.target, context.settings ? context.settings.resolveURL(context.url) : context.url, context.type, (data) => {
-        context.result = data;
-        resolve();
-      }, reject);
-      xhr.send();
-    });
-  };
-  function runMiddlewares(middleware, context) {
-    let index = -1;
-    return dispatch(0);
-    function dispatch(i, err) {
-      if (err)
-        return Promise.reject(err);
-      if (i <= index)
-        return Promise.reject(new Error("next() called multiple times"));
-      index = i;
-      const fn = middleware[i];
-      if (!fn)
-        return Promise.resolve();
-      try {
-        return Promise.resolve(fn(context, dispatch.bind(null, i + 1)));
-      } catch (err2) {
-        return Promise.reject(err2);
-      }
-    }
-  }
-  class Live2DLoader {
-    static load(context) {
-      return runMiddlewares(this.middlewares, context).then(() => context.result);
-    }
-  }
-  Live2DLoader.middlewares = [XHRLoader.loader];
-  function createTexture(url, options = {}) {
-    var _a;
-    const textureOptions = { resourceOptions: { crossorigin: options.crossOrigin } };
-    if (core.Texture.fromURL) {
-      return core.Texture.fromURL(url, textureOptions).catch((e) => {
-        if (e instanceof Error) {
-          throw e;
-        }
-        const err = new Error("Texture loading error");
-        err.event = e;
-        throw err;
-      });
-    }
-    textureOptions.resourceOptions.autoLoad = false;
-    const texture = core.Texture.from(url, textureOptions);
-    if (texture.baseTexture.valid) {
-      return Promise.resolve(texture);
-    }
-    const resource = texture.baseTexture.resource;
-    (_a = resource._live2d_load) != null ? _a : resource._live2d_load = new Promise((resolve, reject) => {
-      const errorHandler = (event) => {
-        resource.source.removeEventListener("error", errorHandler);
-        const err = new Error("Texture loading error");
-        err.event = event;
-        reject(err);
-      };
-      resource.source.addEventListener("error", errorHandler);
-      resource.load().then(() => resolve(texture)).catch(errorHandler);
-    });
-    return resource._live2d_load;
-  }
-  const TAG = "Live2DFactory";
-  const urlToJSON = (context, next) => __async(this, null, function* () {
-    if (typeof context.source === "string") {
-      const data = yield Live2DLoader.load({
-        url: context.source,
-        type: "json",
-        target: context.live2dModel
-      });
-      data.url = context.source;
-      context.source = data;
-      context.live2dModel.emit("settingsJSONLoaded", data);
-    }
-    return next();
-  });
-  const jsonToSettings = (context, next) => __async(this, null, function* () {
-    if (context.source instanceof ModelSettings) {
-      context.settings = context.source;
-      return next();
-    } else if (typeof context.source === "object") {
-      const runtime = Live2DFactory.findRuntime(context.source);
-      if (runtime) {
-        const settings = runtime.createModelSettings(context.source);
-        context.settings = settings;
-        context.live2dModel.emit("settingsLoaded", settings);
-        return next();
-      }
-    }
-    throw new TypeError("Unknown settings format.");
-  });
-  const waitUntilReady = (context, next) => {
-    if (context.settings) {
-      const runtime = Live2DFactory.findRuntime(context.settings);
-      if (runtime) {
-        return runtime.ready().then(next);
-      }
-    }
-    return next();
-  };
-  const setupOptionals = (context, next) => __async(this, null, function* () {
-    yield next();
-    const internalModel = context.internalModel;
-    if (internalModel) {
-      const settings = context.settings;
-      const runtime = Live2DFactory.findRuntime(settings);
-      if (runtime) {
-        const tasks = [];
-        if (settings.pose) {
-          tasks.push(Live2DLoader.load({
-            settings,
-            url: settings.pose,
-            type: "json",
-            target: internalModel
-          }).then((data) => {
-            internalModel.pose = runtime.createPose(internalModel.coreModel, data);
-            context.live2dModel.emit("poseLoaded", internalModel.pose);
-          }).catch((e) => {
-            context.live2dModel.emit("poseLoadError", e);
-            logger.warn(TAG, "Failed to load pose.", e);
-          }));
-        }
-        if (settings.physics) {
-          tasks.push(Live2DLoader.load({
-            settings,
-            url: settings.physics,
-            type: "json",
-            target: internalModel
-          }).then((data) => {
-            internalModel.physics = runtime.createPhysics(internalModel.coreModel, data);
-            context.live2dModel.emit("physicsLoaded", internalModel.physics);
-          }).catch((e) => {
-            context.live2dModel.emit("physicsLoadError", e);
-            logger.warn(TAG, "Failed to load physics.", e);
-          }));
-        }
-        if (tasks.length) {
-          yield Promise.all(tasks);
-        }
-      }
-    }
-  });
-  const setupEssentials = (context, next) => __async(this, null, function* () {
-    if (context.settings) {
-      const live2DModel = context.live2dModel;
-      const textureLoadings = context.settings.textures.map((tex) => {
-        const url = context.settings.resolveURL(tex);
-        return createTexture(url, { crossOrigin: context.options.crossOrigin });
-      });
-      yield next();
-      if (context.internalModel) {
-        live2DModel.internalModel = context.internalModel;
-        live2DModel.emit("modelLoaded", context.internalModel);
-      } else {
-        throw new TypeError("Missing internal model.");
-      }
-      live2DModel.textures = yield Promise.all(textureLoadings);
-      live2DModel.emit("textureLoaded", live2DModel.textures);
-    } else {
-      throw new TypeError("Missing settings.");
-    }
-  });
-  const createInternalModel = (context, next) => __async(this, null, function* () {
-    const settings = context.settings;
-    if (settings instanceof ModelSettings) {
-      const runtime = Live2DFactory.findRuntime(settings);
-      if (!runtime) {
-        throw new TypeError("Unknown model settings.");
-      }
-      const modelData = yield Live2DLoader.load({
-        settings,
-        url: settings.moc,
-        type: "arraybuffer",
-        target: context.live2dModel
-      });
-      if (!runtime.isValidMoc(modelData)) {
-        throw new Error("Invalid moc data");
-      }
-      const coreModel = runtime.createCoreModel(modelData);
-      context.internalModel = runtime.createInternalModel(coreModel, settings, context.options);
-      return next();
-    }
-    throw new TypeError("Missing settings.");
-  });
-  const _Live2DFactory = class {
-    static registerRuntime(runtime) {
-      _Live2DFactory.runtimes.push(runtime);
-      _Live2DFactory.runtimes.sort((a, b) => b.version - a.version);
-    }
-    static findRuntime(source) {
-      for (const runtime of _Live2DFactory.runtimes) {
-        if (runtime.test(source)) {
-          return runtime;
-        }
-      }
-    }
-    static setupLive2DModel(live2dModel, source, options) {
-      return __async(this, null, function* () {
-        const textureLoaded = new Promise((resolve) => live2dModel.once("textureLoaded", resolve));
-        const modelLoaded = new Promise((resolve) => live2dModel.once("modelLoaded", resolve));
-        const readyEventEmitted = Promise.all([textureLoaded, modelLoaded]).then(() => live2dModel.emit("ready"));
-        yield runMiddlewares(_Live2DFactory.live2DModelMiddlewares, {
-          live2dModel,
-          source,
-          options: options || {}
-        });
-        yield readyEventEmitted;
-        live2dModel.emit("load");
-      });
-    }
-    static loadMotion(motionManager, group, index) {
-      var _a, _b;
-      const handleError = (e) => motionManager.emit("motionLoadError", group, index, e);
-      try {
-        const definition = (_a = motionManager.definitions[group]) == null ? void 0 : _a[index];
-        if (!definition) {
-          return Promise.resolve(void 0);
-        }
-        if (!motionManager.listeners("destroy").includes(_Live2DFactory.releaseTasks)) {
-          motionManager.once("destroy", _Live2DFactory.releaseTasks);
-        }
-        let tasks = _Live2DFactory.motionTasksMap.get(motionManager);
-        if (!tasks) {
-          tasks = {};
-          _Live2DFactory.motionTasksMap.set(motionManager, tasks);
-        }
-        let taskGroup = tasks[group];
-        if (!taskGroup) {
-          taskGroup = [];
-          tasks[group] = taskGroup;
-        }
-        const path = motionManager.getMotionFile(definition);
-        (_b = taskGroup[index]) != null ? _b : taskGroup[index] = Live2DLoader.load({
-          url: path,
-          settings: motionManager.settings,
-          type: motionManager.motionDataType,
-          target: motionManager
-        }).then((data) => {
-          var _a2;
-          const taskGroup2 = (_a2 = _Live2DFactory.motionTasksMap.get(motionManager)) == null ? void 0 : _a2[group];
-          if (taskGroup2) {
-            delete taskGroup2[index];
-          }
-          const motion = motionManager.createMotion(data, group, definition);
-          motionManager.emit("motionLoaded", group, index, motion);
-          return motion;
-        }).catch((e) => {
-          logger.warn(motionManager.tag, `Failed to load motion: ${path}
-`, e);
-          handleError(e);
-        });
-        return taskGroup[index];
-      } catch (e) {
-        logger.warn(motionManager.tag, `Failed to load motion at "${group}"[${index}]
-`, e);
-        handleError(e);
-      }
-      return Promise.resolve(void 0);
-    }
-    static loadExpression(expressionManager, index) {
-      var _a;
-      const handleError = (e) => expressionManager.emit("expressionLoadError", index, e);
-      try {
-        const definition = expressionManager.definitions[index];
-        if (!definition) {
-          return Promise.resolve(void 0);
-        }
-        if (!expressionManager.listeners("destroy").includes(_Live2DFactory.releaseTasks)) {
-          expressionManager.once("destroy", _Live2DFactory.releaseTasks);
-        }
-        let tasks = _Live2DFactory.expressionTasksMap.get(expressionManager);
-        if (!tasks) {
-          tasks = [];
-          _Live2DFactory.expressionTasksMap.set(expressionManager, tasks);
-        }
-        const path = expressionManager.getExpressionFile(definition);
-        (_a = tasks[index]) != null ? _a : tasks[index] = Live2DLoader.load({
-          url: path,
-          settings: expressionManager.settings,
-          type: "json",
-          target: expressionManager
-        }).then((data) => {
-          const tasks2 = _Live2DFactory.expressionTasksMap.get(expressionManager);
-          if (tasks2) {
-            delete tasks2[index];
-          }
-          const expression = expressionManager.createExpression(data, definition);
-          expressionManager.emit("expressionLoaded", index, expression);
-          return expression;
-        }).catch((e) => {
-          logger.warn(expressionManager.tag, `Failed to load expression: ${path}
-`, e);
-          handleError(e);
-        });
-        return tasks[index];
-      } catch (e) {
-        logger.warn(expressionManager.tag, `Failed to load expression at [${index}]
-`, e);
-        handleError(e);
-      }
-      return Promise.resolve(void 0);
-    }
-    static releaseTasks() {
-      if (this instanceof MotionManager) {
-        _Live2DFactory.motionTasksMap.delete(this);
-      } else {
-        _Live2DFactory.expressionTasksMap.delete(this);
-      }
-    }
-  };
-  let Live2DFactory = _Live2DFactory;
-  Live2DFactory.runtimes = [];
-  Live2DFactory.urlToJSON = urlToJSON;
-  Live2DFactory.jsonToSettings = jsonToSettings;
-  Live2DFactory.waitUntilReady = waitUntilReady;
-  Live2DFactory.setupOptionals = setupOptionals;
-  Live2DFactory.setupEssentials = setupEssentials;
-  Live2DFactory.createInternalModel = createInternalModel;
-  Live2DFactory.live2DModelMiddlewares = [
-    urlToJSON,
-    jsonToSettings,
-    waitUntilReady,
-    setupOptionals,
-    setupEssentials,
-    createInternalModel
-  ];
-  Live2DFactory.motionTasksMap = /* @__PURE__ */ new WeakMap();
-  Live2DFactory.expressionTasksMap = /* @__PURE__ */ new WeakMap();
-  MotionManager.prototype["_loadMotion"] = function(group, index) {
-    return Live2DFactory.loadMotion(this, group, index);
-  };
-  ExpressionManager.prototype["_loadExpression"] = function(index) {
-    return Live2DFactory.loadExpression(this, index);
-  };
   class InteractionMixin {
     constructor() {
-      this._autoInteract = false;
+      this._followMouse = false;
+      this._touchEvents = false;
     }
-    get autoInteract() {
-      return this._autoInteract;
+    get followMouse() {
+      return this._followMouse;
     }
-    set autoInteract(autoInteract) {
-      if (autoInteract !== this._autoInteract) {
-        if (autoInteract) {
-          this.on("pointertap", onTap, this);
-        } else {
-          this.off("pointertap", onTap, this);
-        }
-        this._autoInteract = autoInteract;
+    set followMouse(follow) {
+      if (this._followMouse === follow)
+        return;
+      if (follow) {
+        this.on("pointermove", onPointerMove);
+      } else {
+        this.off("pointermove", onPointerMove);
       }
+      this._followMouse = follow;
     }
-    registerInteraction(manager) {
-      if (manager !== this.interactionManager) {
-        this.unregisterInteraction();
-        if (this._autoInteract && manager) {
-          this.interactionManager = manager;
-          manager.on("pointermove", onPointerMove, this);
-        }
-      }
+    get touchEvents() {
+      return this._touchEvents;
     }
-    unregisterInteraction() {
-      var _a;
-      if (this.interactionManager) {
-        (_a = this.interactionManager) == null ? void 0 : _a.off("pointermove", onPointerMove, this);
-        this.interactionManager = void 0;
+    set touchEvents(touchable) {
+      if (this._touchEvents === touchable)
+        return;
+      if (touchable) {
+        this.on("pointertap", onTap);
+      } else {
+        this.off("pointertap", onTap);
       }
+      this._touchEvents = touchable;
     }
   }
   function onTap(event) {
-    this.tap(event.data.global.x, event.data.global.y);
+    this.tap(event.globalX, event.globalY);
   }
   function onPointerMove(event) {
-    this.focus(event.data.global.x, event.data.global.y);
+    this.focus(event.globalX, event.globalY);
   }
   class Live2DTransform extends math.Transform {
   }
-  const tempPoint = new math.Point();
-  const tempMatrix$1 = new math.Matrix();
-  let tickerRef;
-  class Live2DModel extends display.Container {
-    constructor(options) {
-      super();
-      this.tag = "Live2DModel(uninitialized)";
-      this.textures = [];
-      this.transform = new Live2DTransform();
-      this.anchor = new math.ObservablePoint(this.onAnchorChange, this, 0, 0);
-      this.glContextID = -1;
-      this.elapsedTime = performance.now();
-      this.deltaTime = 0;
-      this.wasUpdated = false;
-      this._autoUpdate = false;
-      this.once("modelLoaded", () => this.init(options));
-    }
-    static from(source, options) {
-      const model = new this(options);
-      return Live2DFactory.setupLive2DModel(model, source, options).then(() => model);
-    }
-    static fromSync(source, options) {
-      const model = new this(options);
-      Live2DFactory.setupLive2DModel(model, source, options).then(options == null ? void 0 : options.onLoad).catch(options == null ? void 0 : options.onError);
-      return model;
-    }
-    static registerTicker(tickerClass) {
-      tickerRef = tickerClass;
-    }
-    get autoUpdate() {
-      return this._autoUpdate;
-    }
-    set autoUpdate(autoUpdate) {
-      var _a;
-      tickerRef || (tickerRef = (_a = window.PIXI) == null ? void 0 : _a.Ticker);
-      if (autoUpdate) {
-        if (!this._destroyed) {
-          if (tickerRef) {
-            tickerRef.shared.add(this.onTickerUpdate, this);
-            this._autoUpdate = true;
-          } else {
-            logger.warn(this.tag, "No Ticker registered, please call Live2DModel.registerTicker(Ticker).");
-          }
-        }
-      } else {
-        tickerRef == null ? void 0 : tickerRef.shared.remove(this.onTickerUpdate, this);
-        this._autoUpdate = false;
-      }
-    }
-    init(options) {
-      this.tag = `Live2DModel(${this.internalModel.settings.name})`;
-      const _options = Object.assign({
-        autoUpdate: true,
-        autoInteract: true
-      }, options);
-      if (_options.autoInteract) {
-        this.interactive = true;
-      }
-      this.autoInteract = _options.autoInteract;
-      this.autoUpdate = _options.autoUpdate;
-    }
-    onAnchorChange() {
-      this.pivot.set(this.anchor.x * this.internalModel.width, this.anchor.y * this.internalModel.height);
-    }
-    motion(group, index, priority, sound, volume, expression) {
-      return index === void 0 ? this.internalModel.motionManager.startRandomMotion(group, priority) : this.internalModel.motionManager.startMotion(group, index, priority, sound, volume, expression);
-    }
-    resetMotions() {
-      return this.internalModel.motionManager.stopAllMotions();
-    }
-    speak(sound, volume, expression) {
-      return this.internalModel.motionManager.speakUp(sound, volume, expression);
-    }
-    stopSpeaking() {
-      return this.internalModel.motionManager.stopSpeaking();
-    }
-    expression(id) {
-      if (this.internalModel.motionManager.expressionManager) {
-        return id === void 0 ? this.internalModel.motionManager.expressionManager.setRandomExpression() : this.internalModel.motionManager.expressionManager.setExpression(id);
-      }
-      return Promise.resolve(false);
-    }
-    focus(x, y, instant = false) {
-      tempPoint.x = x;
-      tempPoint.y = y;
-      this.toModelPosition(tempPoint, tempPoint, true);
-      let tx = tempPoint.x / this.internalModel.originalWidth * 2 - 1;
-      let ty = tempPoint.y / this.internalModel.originalHeight * 2 - 1;
-      let radian = Math.atan2(ty, tx);
-      this.internalModel.focusController.focus(Math.cos(radian), -Math.sin(radian), instant);
-    }
-    tap(x, y) {
-      const hitAreaNames = this.hitTest(x, y);
-      if (hitAreaNames.length) {
-        logger.log(this.tag, `Hit`, hitAreaNames);
-        this.emit("hit", hitAreaNames);
-      }
-    }
-    hitTest(x, y) {
-      tempPoint.x = x;
-      tempPoint.y = y;
-      this.toModelPosition(tempPoint, tempPoint);
-      return this.internalModel.hitTest(tempPoint.x, tempPoint.y);
-    }
-    toModelPosition(position, result = position.clone(), skipUpdate) {
-      if (!skipUpdate) {
-        this._recursivePostUpdateTransform();
-        if (!this.parent) {
-          this.parent = this._tempDisplayObjectParent;
-          this.displayObjectUpdateTransform();
-          this.parent = null;
-        } else {
-          this.displayObjectUpdateTransform();
-        }
-      }
-      this.transform.worldTransform.applyInverse(position, result);
-      this.internalModel.localTransform.applyInverse(result, result);
-      return result;
-    }
-    containsPoint(point) {
-      return this.getBounds(true).contains(point.x, point.y);
-    }
-    _calculateBounds() {
-      this._bounds.addFrame(this.transform, 0, 0, this.internalModel.width, this.internalModel.height);
-    }
-    onTickerUpdate() {
-      this.update(tickerRef.shared.deltaMS);
-    }
-    update(dt) {
-      this.deltaTime += dt;
-      this.elapsedTime += dt;
-      this.wasUpdated = true;
-    }
-    _render(renderer) {
-      this.registerInteraction(renderer.plugins.interaction);
-      if (!this.wasUpdated) {
-        return;
-      }
-      renderer.batch.reset();
-      renderer.geometry.reset();
-      renderer.shader.reset();
-      renderer.state.reset();
-      let shouldUpdateTexture = false;
-      if (this.glContextID !== renderer.CONTEXT_UID) {
-        this.glContextID = renderer.CONTEXT_UID;
-        this.internalModel.updateWebGLContext(renderer.gl, this.glContextID);
-        shouldUpdateTexture = true;
-      }
-      for (let i = 0; i < this.textures.length; i++) {
-        const texture = this.textures[i];
-        if (!texture.valid) {
-          continue;
-        }
-        if (shouldUpdateTexture || !texture.baseTexture._glTextures[this.glContextID]) {
-          renderer.gl.pixelStorei(WebGLRenderingContext.UNPACK_FLIP_Y_WEBGL, this.internalModel.textureFlipY);
-          renderer.texture.bind(texture.baseTexture, 0);
-        }
-        this.internalModel.bindTexture(i, texture.baseTexture._glTextures[this.glContextID].texture);
-        texture.baseTexture.touched = renderer.textureGC.count;
-      }
-      const viewport = renderer.framebuffer.viewport;
-      this.internalModel.viewport = [viewport.x, viewport.y, viewport.width, viewport.height];
-      if (this.deltaTime) {
-        this.internalModel.update(this.deltaTime, this.elapsedTime);
-        this.deltaTime = 0;
-      }
-      const internalTransform = tempMatrix$1.copyFrom(renderer.globalUniforms.uniforms.projectionMatrix).append(this.worldTransform);
-      this.internalModel.updateTransform(internalTransform);
-      this.internalModel.draw(renderer.gl);
-      renderer.state.reset();
-      renderer.texture.reset();
-    }
-    destroy(options) {
-      this.emit("destroy");
-      this.autoUpdate = false;
-      this.unregisterInteraction();
-      if (options == null ? void 0 : options.texture) {
-        this.textures.forEach((texture) => texture.destroy(options.baseTexture));
-      }
-      this.internalModel.destroy();
-      super.destroy(options);
-    }
+  function loadArrayBuffer(url) {
+    return __async(this, null, function* () {
+      const response = yield fetch(url);
+      const arrayBuffer = yield response.arrayBuffer();
+      return arrayBuffer;
+    });
   }
-  applyMixins(Live2DModel, [InteractionMixin]);
-  const _FileLoader = class {
-    static resolveURL(settingsURL, filePath) {
-      var _a;
-      const resolved = (_a = _FileLoader.filesMap[settingsURL]) == null ? void 0 : _a[filePath];
-      if (resolved === void 0) {
-        throw new Error("Cannot find this file from uploaded files: " + filePath);
-      }
-      return resolved;
+  function unload(asset) {
+    for (const texture of asset.textures)
+      texture.destroy(true);
+    asset.textures.length = 0;
+    for (const key in asset.sounds) {
+      for (const sound of asset.sounds[key])
+        sound.destroy();
+      asset.sounds[key].length = 0;
+      delete asset.sounds[key];
     }
-    static upload(files, settings) {
+    for (const key in asset.motions) {
+      asset.motions[key].length = 0;
+      delete asset.motions[key];
+    }
+    if (asset.expressions)
+      asset.expressions.length = 0;
+    delete asset.moc;
+    delete asset.textures;
+    delete asset.motions;
+    delete asset.physics;
+    delete asset.pose;
+    delete asset.expressions;
+    delete asset.sounds;
+    delete asset.settings;
+    console.log(asset);
+  }
+  const cubism4Load = {
+    name: "loadCubism4",
+    extension: {
+      type: core.ExtensionType.LoadParser,
+      priority: assets.LoaderParserPriority.Normal
+    },
+    test(url) {
+      return utils.path.extname(url) === ".moc3";
+    },
+    load: loadArrayBuffer,
+    testParse(asset) {
+      if (!asset.FileReferences)
+        return false;
+      return !!asset.FileReferences.Moc && !!asset.FileReferences.Textures;
+    },
+    parse(asset, loadAsset, loader) {
       return __async(this, null, function* () {
-        const fileMap = {};
-        for (const definedFile of settings.getDefinedFiles()) {
-          const actualPath = decodeURI(utils.url.resolve(settings.url, definedFile));
-          const actualFile = files.find((file) => file.webkitRelativePath === actualPath);
-          if (actualFile) {
-            fileMap[definedFile] = URL.createObjectURL(actualFile);
-          }
+        const modelData = {
+          textures: []
+        };
+        const FR = asset.FileReferences;
+        const promises = [];
+        modelData.settings = asset;
+        asset.url = loadAsset.src;
+        const dir = utils.path.dirname(loadAsset.src);
+        promises.push(loader.load(
+          utils.path.join(dir, FR.Moc)
+        ).then((moc) => {
+          modelData.moc = moc;
+        }));
+        for (const textureIndex in FR.Textures) {
+          promises.push(
+            loader.load(
+              utils.path.join(dir, FR.Textures[textureIndex])
+            ).then((texture) => {
+              modelData.textures[textureIndex] = texture;
+            })
+          );
         }
-        _FileLoader.filesMap[settings._objectURL] = fileMap;
-      });
-    }
-    static createSettings(files) {
-      return __async(this, null, function* () {
-        const settingsFile = files.find((file) => file.name.endsWith("model.json") || file.name.endsWith("model3.json"));
-        if (!settingsFile) {
-          throw new TypeError("Settings file not found");
-        }
-        const settingsText = yield _FileLoader.readText(settingsFile);
-        const settingsJSON = JSON.parse(settingsText);
-        settingsJSON.url = settingsFile.webkitRelativePath;
-        const runtime = Live2DFactory.findRuntime(settingsJSON);
-        if (!runtime) {
-          throw new Error("Unknown settings JSON");
-        }
-        const settings = runtime.createModelSettings(settingsJSON);
-        settings._objectURL = URL.createObjectURL(settingsFile);
-        return settings;
-      });
-    }
-    static readText(file) {
-      return __async(this, null, function* () {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsText(file, "utf8");
-        });
-      });
-    }
-  };
-  let FileLoader = _FileLoader;
-  FileLoader.filesMap = {};
-  FileLoader.factory = (context, next) => __async(this, null, function* () {
-    if (Array.isArray(context.source) && context.source[0] instanceof File) {
-      const files = context.source;
-      let settings = files.settings;
-      if (!settings) {
-        settings = yield _FileLoader.createSettings(files);
-      } else if (!settings._objectURL) {
-        throw new Error('"_objectURL" must be specified in ModelSettings');
-      }
-      settings.validateFiles(files.map((file) => encodeURI(file.webkitRelativePath)));
-      yield _FileLoader.upload(files, settings);
-      settings.resolveURL = function(url) {
-        return _FileLoader.resolveURL(this._objectURL, url);
-      };
-      context.source = settings;
-      context.live2dModel.once("modelLoaded", (internalModel) => {
-        internalModel.once("destroy", function() {
-          const objectURL = this.settings._objectURL;
-          URL.revokeObjectURL(objectURL);
-          if (_FileLoader.filesMap[objectURL]) {
-            for (const resourceObjectURL of Object.values(_FileLoader.filesMap[objectURL])) {
-              URL.revokeObjectURL(resourceObjectURL);
+        if (FR.Motions) {
+          modelData.motions = {};
+          modelData.sounds = {};
+          for (const motionName in FR.Motions) {
+            modelData.motions[motionName] = [];
+            modelData.sounds[motionName] = [];
+            for (const motionIndex in FR.Motions[motionName]) {
+              const data = FR.Motions[motionName][motionIndex];
+              promises.push(
+                loader.load(
+                  utils.path.join(dir, data.File)
+                ).then((motion) => {
+                  modelData.motions[motionName][motionIndex] = motion;
+                })
+              );
+              if (data.Sound) {
+                promises.push(
+                  loader.load(
+                    utils.path.join(dir, data.Sound)
+                  ).then((sound) => {
+                    modelData.sounds[motionName][motionIndex] = sound;
+                  })
+                );
+              }
             }
           }
-          delete _FileLoader.filesMap[objectURL];
-        });
-      });
-    }
-    return next();
-  });
-  Live2DFactory.live2DModelMiddlewares.unshift(FileLoader.factory);
-  const _ZipLoader = class {
-    static unzip(reader, settings) {
-      return __async(this, null, function* () {
-        const filePaths = yield _ZipLoader.getFilePaths(reader);
-        const requiredFilePaths = [];
-        for (const definedFile of settings.getDefinedFiles()) {
-          const actualPath = decodeURI(utils.url.resolve(settings.url, definedFile));
-          if (filePaths.includes(actualPath)) {
-            requiredFilePaths.push(actualPath);
+        }
+        if (FR.Physics) {
+          promises.push(loader.load(utils.path.join(dir, FR.Physics)).then((physics) => {
+            modelData.physics = physics;
+          }));
+        }
+        if (FR.Expressions) {
+          modelData.expressions = [];
+          for (const expressionIndex in FR.Expressions) {
+            promises.push(loader.load(utils.path.join(dir, FR.Expressions[expressionIndex].File)).then((expression) => {
+              modelData.expressions[expressionIndex] = expression;
+            }));
           }
         }
-        const files = yield _ZipLoader.getFiles(reader, requiredFilePaths);
-        for (let i = 0; i < files.length; i++) {
-          const path = requiredFilePaths[i];
-          const file = files[i];
-          Object.defineProperty(file, "webkitRelativePath", {
-            value: path
-          });
+        if (FR.Pose) {
+          promises.push(loader.load(utils.path.join(dir, FR.Pose)).then((pose) => {
+            modelData.pose = pose;
+          }));
         }
-        return files;
+        yield Promise.all(promises);
+        return modelData;
       });
-    }
-    static createSettings(reader) {
-      return __async(this, null, function* () {
-        const filePaths = yield _ZipLoader.getFilePaths(reader);
-        const settingsFilePath = filePaths.find((path) => path.endsWith("model.json") || path.endsWith("model3.json"));
-        if (!settingsFilePath) {
-          throw new Error("Settings file not found");
-        }
-        const settingsText = yield _ZipLoader.readText(reader, settingsFilePath);
-        if (!settingsText) {
-          throw new Error("Empty settings file: " + settingsFilePath);
-        }
-        const settingsJSON = JSON.parse(settingsText);
-        settingsJSON.url = settingsFilePath;
-        const runtime = Live2DFactory.findRuntime(settingsJSON);
-        if (!runtime) {
-          throw new Error("Unknown settings JSON");
-        }
-        return runtime.createModelSettings(settingsJSON);
-      });
-    }
-    static zipReader(data, url) {
-      return __async(this, null, function* () {
-        throw new Error("Not implemented");
-      });
-    }
-    static getFilePaths(reader) {
-      return __async(this, null, function* () {
-        throw new Error("Not implemented");
-      });
-    }
-    static getFiles(reader, paths) {
-      return __async(this, null, function* () {
-        throw new Error("Not implemented");
-      });
-    }
-    static readText(reader, path) {
-      return __async(this, null, function* () {
-        throw new Error("Not implemented");
-      });
-    }
-    static releaseReader(reader) {
-    }
+    },
+    unload
   };
-  let ZipLoader = _ZipLoader;
-  ZipLoader.ZIP_PROTOCOL = "zip://";
-  ZipLoader.uid = 0;
-  ZipLoader.factory = (context, next) => __async(this, null, function* () {
-    const source = context.source;
-    let sourceURL;
-    let zipBlob;
-    let settings;
-    if (typeof source === "string" && (source.endsWith(".zip") || source.startsWith(_ZipLoader.ZIP_PROTOCOL))) {
-      if (source.startsWith(_ZipLoader.ZIP_PROTOCOL)) {
-        sourceURL = source.slice(_ZipLoader.ZIP_PROTOCOL.length);
-      } else {
-        sourceURL = source;
-      }
-      zipBlob = yield Live2DLoader.load({
-        url: sourceURL,
-        type: "blob",
-        target: context.live2dModel
+  const cubism2Load = {
+    name: "loadCubism2",
+    extension: {
+      type: core.ExtensionType.LoadParser,
+      priority: assets.LoaderParserPriority.High
+    },
+    test(url) {
+      const ext = utils.path.extname(url);
+      return ext === ".moc" || ext === ".mtn";
+    },
+    load: loadArrayBuffer,
+    testParse(asset) {
+      if (!asset.model)
+        return false;
+      return utils.path.extname(asset.model) === ".moc";
+    },
+    parse(asset, loadAsset, loader) {
+      return __async(this, null, function* () {
+        const modelData = {
+          textures: []
+        };
+        const preferCreateImageBitmap = assets.loadTextures.config.preferCreateImageBitmap;
+        assets.loadTextures.config.preferCreateImageBitmap = false;
+        const promises = [];
+        modelData.settings = asset;
+        asset.url = loadAsset.src;
+        const dir = utils.path.dirname(loadAsset.src);
+        promises.push(
+          loader.load(
+            utils.path.join(dir, asset.model)
+          ).then((moc) => {
+            modelData.moc = moc;
+          })
+        );
+        for (const textureIndex in asset.textures) {
+          promises.push(
+            loader.load(
+              utils.path.join(dir, asset.textures[textureIndex])
+            ).then((texture) => {
+              modelData.textures[textureIndex] = texture;
+            })
+          );
+        }
+        if (asset.motions) {
+          modelData.motions = {};
+          modelData.sounds = {};
+          for (const motionName in asset.motions) {
+            modelData.motions[motionName] = [];
+            modelData.sounds[motionName] = [];
+            for (const motionIndex in asset.motions[motionName]) {
+              promises.push(
+                loader.load(
+                  utils.path.join(dir, asset.motions[motionName][motionIndex].file)
+                ).then((motion) => {
+                  modelData.motions[motionName][motionIndex] = motion;
+                })
+              );
+              if (asset.motions[motionName][motionIndex].sound) {
+                promises.push(
+                  loader.load(
+                    utils.path.join(dir, asset.motions[motionName][motionIndex].sound)
+                  ).then((sound) => {
+                    modelData.sounds[motionName][motionIndex] = sound;
+                  })
+                );
+              }
+            }
+          }
+        }
+        if (asset.physics) {
+          promises.push(loader.load(utils.path.join(dir, asset.physics)).then((physics) => {
+            modelData.physics = physics;
+          }));
+        }
+        if (asset.expressions) {
+          modelData.expressions = [];
+          for (const expressionIndex in asset.expressions) {
+            promises.push(loader.load(utils.path.join(dir, asset.expressions[expressionIndex].file)).then((expression) => {
+              modelData.expressions[expressionIndex] = expression;
+            }));
+          }
+        }
+        if (asset.pose) {
+          promises.push(loader.load(utils.path.join(dir, asset.pose)).then((pose) => {
+            modelData.pose = pose;
+          }));
+        }
+        yield Promise.all(promises);
+        assets.loadTextures.config.preferCreateImageBitmap = preferCreateImageBitmap;
+        return modelData;
       });
-    } else if (Array.isArray(source) && source.length === 1 && source[0] instanceof File && source[0].name.endsWith(".zip")) {
-      zipBlob = source[0];
-      sourceURL = URL.createObjectURL(zipBlob);
-      settings = source.settings;
-    }
-    if (zipBlob) {
-      if (!zipBlob.size) {
-        throw new Error("Empty zip file");
-      }
-      const reader = yield _ZipLoader.zipReader(zipBlob, sourceURL);
-      if (!settings) {
-        settings = yield _ZipLoader.createSettings(reader);
-      }
-      settings._objectURL = _ZipLoader.ZIP_PROTOCOL + _ZipLoader.uid + "/" + settings.url;
-      const files = yield _ZipLoader.unzip(reader, settings);
-      files.settings = settings;
-      context.source = files;
-      if (sourceURL.startsWith("blob:")) {
-        context.live2dModel.once("modelLoaded", (internalModel) => {
-          internalModel.once("destroy", function() {
-            URL.revokeObjectURL(sourceURL);
-          });
-        });
-      }
-      _ZipLoader.releaseReader(reader);
-    }
-    return next();
-  });
-  Live2DFactory.live2DModelMiddlewares.unshift(ZipLoader.factory);
+    },
+    unload
+  };
   if (!window.Live2D) {
     throw new Error("Could not find Cubism 2 runtime. This plugin requires live2d.min.js to be loaded.");
   }
@@ -1759,10 +1020,10 @@ var __async = (__this, __arguments, generator) => {
   }
   class Cubism2ExpressionManager extends ExpressionManager {
     constructor(settings, options) {
-      var _a;
+      var _a2;
       super(settings, options);
       this.queueManager = new MotionQueueManager();
-      this.definitions = (_a = this.settings.expressions) != null ? _a : [];
+      this.definitions = (_a2 = this.settings.expressions) != null ? _a2 : [];
       this.init();
     }
     isFinished() {
@@ -1989,8 +1250,8 @@ var __async = (__this, __arguments, generator) => {
       this.coreModel.setTexture(index, texture);
     }
     getHitAreaDefs() {
-      var _a;
-      return ((_a = this.settings.hitAreas) == null ? void 0 : _a.map((hitArea) => ({
+      var _a2;
+      return ((_a2 = this.settings.hitAreas) == null ? void 0 : _a2.map((hitArea) => ({
         id: hitArea.id,
         name: hitArea.name,
         index: this.coreModel.getDrawDataIndex(hitArea.id)
@@ -2019,20 +1280,20 @@ var __async = (__this, __arguments, generator) => {
       return this.coreModel.getTransformedPoints(drawIndex).slice();
     }
     update(dt, now) {
-      var _a, _b, _c, _d;
+      var _a2, _b2, _c, _d;
       super.update(dt, now);
       const model = this.coreModel;
       this.emit("beforeMotionUpdate");
       const motionUpdated = this.motionManager.update(this.coreModel, now);
       this.emit("afterMotionUpdate");
       model.saveParam();
-      (_a = this.motionManager.expressionManager) == null ? void 0 : _a.update(model, now);
+      (_a2 = this.motionManager.expressionManager) == null ? void 0 : _a2.update(model, now);
       if (!motionUpdated) {
-        (_b = this.eyeBlink) == null ? void 0 : _b.update(dt);
+        (_b2 = this.eyeBlink) == null ? void 0 : _b2.update(dt);
       }
       this.updateFocus();
       this.updateNaturalMovements(dt, now);
-      if (this.lipSync && this.motionManager.currentAudio) {
+      if (this.lipSync && this.motionManager.playingSound) {
         let value = this.motionManager.mouthSync();
         let min_ = 0;
         let max_ = 1;
@@ -2100,8 +1361,8 @@ var __async = (__this, __arguments, generator) => {
       this.copy(json);
     }
     static isValidJSON(json) {
-      var _a;
-      return !!json && typeof json.model === "string" && ((_a = json.textures) == null ? void 0 : _a.length) > 0 && json.textures.every((item) => typeof item === "string");
+      var _a2;
+      return !!json && typeof json.model === "string" && ((_a2 = json.textures) == null ? void 0 : _a2.length) > 0 && json.textures.every((item) => typeof item === "string");
     }
     copy(json) {
       copyProperty("string", json, this, "name", "name");
@@ -2188,13 +1449,15 @@ var __async = (__this, __arguments, generator) => {
       this.opacityAnimDuration = 500;
       this.partsGroups = [];
       if (json.parts_visible) {
-        this.partsGroups = json.parts_visible.map(({ group }) => group.map(({ id, link }) => {
-          const parts = new Live2DPartsParam(id);
-          if (link) {
-            parts.link = link.map((l) => new Live2DPartsParam(l));
-          }
-          return parts;
-        }));
+        this.partsGroups = json.parts_visible.map(
+          ({ group }) => group.map(({ id, link }) => {
+            const parts = new Live2DPartsParam(id);
+            if (link) {
+              parts.link = link.map((l) => new Live2DPartsParam(l));
+            }
+            return parts;
+          })
+        );
         this.init();
       }
     }
@@ -2218,7 +1481,9 @@ var __async = (__this, __arguments, generator) => {
       const phi = 0.5;
       const maxBackOpacity = 0.15;
       let visibleOpacity = 1;
-      let visibleIndex = partsGroup.findIndex(({ paramIndex, partsIndex }) => partsIndex >= 0 && model.getParamFloat(paramIndex) !== 0);
+      let visibleIndex = partsGroup.findIndex(
+        ({ paramIndex, partsIndex }) => partsIndex >= 0 && model.getParamFloat(paramIndex) !== 0
+      );
       if (visibleIndex >= 0) {
         const originalOpacity = model.getPartsOpacity(partsGroup[visibleIndex].partsIndex);
         visibleOpacity = clamp(originalOpacity + dt / this.opacityAnimDuration, 0, 1);
@@ -2270,7 +1535,21 @@ var __async = (__this, __arguments, generator) => {
       });
     }
   }
-  Live2DFactory.registerRuntime({
+  class RuntimeManager {
+    static registerRuntime(runtime) {
+      this.runtimes.push(runtime);
+      this.runtimes.sort((a, b) => b.version - a.version);
+    }
+    static findRuntime(source) {
+      for (const runtime of this.runtimes) {
+        if (runtime.test(source)) {
+          return runtime;
+        }
+      }
+    }
+  }
+  RuntimeManager.runtimes = [];
+  RuntimeManager.registerRuntime({
     version: 2,
     test(source) {
       return source instanceof Cubism2ModelSettings || Cubism2ModelSettings.isValidJSON(source);
@@ -2295,8 +1574,8 @@ var __async = (__this, __arguments, generator) => {
         throw error;
       return model;
     },
-    createInternalModel(coreModel, settings, options) {
-      return new Cubism2InternalModel(coreModel, settings, options);
+    createInternalModel(coreModel, settings) {
+      return new Cubism2InternalModel(coreModel, settings);
     },
     createPose(coreModel, data) {
       return new Live2DPose(coreModel, data);
@@ -2305,6 +1584,243 @@ var __async = (__this, __arguments, generator) => {
       return new Live2DPhysics(coreModel, data);
     }
   });
+  core.extensions.add(cubism4Load);
+  core.extensions.add(cubism2Load);
+  const tempPoint = new math.Point();
+  const tempMatrix$1 = new math.Matrix();
+  let tickerRef;
+  class Live2DModel extends display.Container {
+    constructor(modelData, options) {
+      super();
+      this.tag = "Live2DModel(uninitialized)";
+      this.textures = [];
+      this.transform = new Live2DTransform();
+      this.anchor = new math.ObservablePoint(this.onAnchorChange, this, 0, 0);
+      this.glContextID = -1;
+      this.elapsedTime = performance.now();
+      this.deltaTime = 0;
+      this.wasUpdated = false;
+      this._autoUpdate = false;
+      const runtime = RuntimeManager.findRuntime(modelData.settings);
+      if (!runtime) {
+        throw new Error("Unable to find Live 2D runtime.");
+      }
+      runtime.ready().then(() => {
+        var _a2, _b2, _c, _d, _e, _f;
+        const settings = runtime.createModelSettings(structuredClone(modelData.settings));
+        const coreModel = runtime.createCoreModel(modelData.moc);
+        const internalModel = runtime.createInternalModel(coreModel, settings);
+        this.internalModel = internalModel;
+        this.tag = `Live2DModel(${this.internalModel.settings.name})`;
+        const _options = Object.assign({
+          autoUpdate: true,
+          followMouse: true,
+          touchEvents: true,
+          eventMode: "static"
+        }, options);
+        this.autoUpdate = _options.autoUpdate;
+        this.followMouse = _options.followMouse;
+        this.touchEvents = _options.touchEvents;
+        this.eventMode = _options.eventMode;
+        this.textures = modelData.textures.map((texture) => {
+          return texture.clone();
+        });
+        if (modelData.pose)
+          internalModel.pose = runtime.createPose(coreModel, structuredClone(modelData.pose));
+        if (modelData.physics)
+          internalModel.physics = runtime.createPhysics(coreModel, structuredClone(modelData.physics));
+        if (runtime.version === 2) {
+          if (modelData.motions) {
+            const motions = structuredClone(modelData.motions);
+            const motionManager = internalModel.motionManager;
+            for (const motionGroup in motions) {
+              const defaultFade = motionGroup === "idle" ? exports2.config.idleMotionFadingDuration : exports2.config.motionFadingDuration;
+              for (let i = 0; i < motions[motionGroup].length; i++) {
+                const motion = Live2DMotion.loadMotion(motions[motionGroup][i]);
+                motion.setFadeIn((_b2 = (_a2 = motionManager.motionGroups[motionGroup][i]) == null ? void 0 : _a2.fade_in) != null ? _b2 : defaultFade);
+                motion.setFadeOut((_d = (_c = motionManager.motionGroups[motionGroup][i]) == null ? void 0 : _c.fade_out) != null ? _d : defaultFade);
+                motionManager.motionGroups[motionGroup][i] = motion;
+                const sound = (_e = modelData.sounds) == null ? void 0 : _e[motionGroup][i];
+                if (sound) {
+                  motionManager.registerSound(sound, motionGroup, i);
+                }
+              }
+            }
+          }
+          if (modelData.expressions) {
+            const expressions = structuredClone(modelData.expressions);
+            const expressionManager = internalModel.motionManager.expressionManager;
+            for (const expressionIndex in modelData.expressions) {
+              expressionManager.expressions[expressionIndex] = new Live2DExpression(expressions[expressionIndex]);
+            }
+          }
+        } else {
+          if (modelData.motions) {
+            const motions = structuredClone(modelData.motions);
+            const motionManager = internalModel.motionManager;
+            for (const motionGroup in motions) {
+              for (let i = 0; i < motions[motionGroup].length; i++) {
+                motionManager.motionGroups[motionGroup][i] = motionManager.createMotion(motions[motionGroup][i], motionGroup, motions[motionGroup][i]);
+                const sound = (_f = modelData.sounds) == null ? void 0 : _f[motionGroup][i];
+                if (sound) {
+                  motionManager.registerSound(sound, motionGroup, i);
+                }
+              }
+            }
+          }
+          if (modelData.expressions) {
+            const expressions = structuredClone(modelData.expressions);
+            const expressionManager = internalModel.motionManager.expressionManager;
+            for (const expressionIndex in modelData.expressions) {
+              expressionManager.expressions[expressionIndex] = expressionManager == null ? void 0 : expressionManager.createExpression(expressions[expressionIndex], modelData.settings.FileReferences.Expressions[expressionIndex]);
+            }
+          }
+        }
+      });
+    }
+    static registerTicker(tickerClass) {
+      tickerRef = tickerClass;
+    }
+    get autoUpdate() {
+      return this._autoUpdate;
+    }
+    set autoUpdate(autoUpdate) {
+      var _a2;
+      tickerRef || (tickerRef = (_a2 = window.PIXI) == null ? void 0 : _a2.Ticker);
+      if (autoUpdate) {
+        if (!this._destroyed) {
+          if (tickerRef) {
+            tickerRef.shared.add(this.onTickerUpdate, this);
+            this._autoUpdate = true;
+          } else {
+            logger.warn(this.tag, "No Ticker registered, please call Live2DModel.registerTicker(Ticker).");
+          }
+        }
+      } else {
+        tickerRef == null ? void 0 : tickerRef.shared.remove(this.onTickerUpdate, this);
+        this._autoUpdate = false;
+      }
+    }
+    onAnchorChange() {
+      this.pivot.set(this.anchor.x * this.internalModel.width, this.anchor.y * this.internalModel.height);
+    }
+    motion(group, index, priority, sound, speakOptions = {}) {
+      return index === void 0 ? this.internalModel.motionManager.startRandomMotion(group, priority) : this.internalModel.motionManager.startMotion(group, index, priority, sound, speakOptions);
+    }
+    resetMotions() {
+      return this.internalModel.motionManager.stopAllMotions();
+    }
+    speak(sound, options = {}) {
+      this.internalModel.motionManager.speak(sound, options);
+    }
+    stopSpeaking() {
+      return this.internalModel.motionManager.stopSpeaking();
+    }
+    expression(id) {
+      if (this.internalModel.motionManager.expressionManager) {
+        return id === void 0 ? this.internalModel.motionManager.expressionManager.setRandomExpression() : this.internalModel.motionManager.expressionManager.setExpression(id);
+      }
+      return Promise.resolve(false);
+    }
+    focus(x, y, instant = false) {
+      tempPoint.x = x;
+      tempPoint.y = y;
+      this.toModelPosition(tempPoint, tempPoint, true);
+      let tx = tempPoint.x / this.internalModel.originalWidth * 2 - 1;
+      let ty = tempPoint.y / this.internalModel.originalHeight * 2 - 1;
+      let radian = Math.atan2(ty, tx);
+      this.internalModel.focusController.focus(Math.cos(radian), -Math.sin(radian), instant);
+    }
+    tap(x, y) {
+      const hitAreaNames = this.hitTest(x, y);
+      if (hitAreaNames.length) {
+        logger.log(this.tag, `Hit`, hitAreaNames);
+        this.emit("hit", hitAreaNames);
+      }
+    }
+    hitTest(x, y) {
+      tempPoint.x = x;
+      tempPoint.y = y;
+      this.toModelPosition(tempPoint, tempPoint);
+      return this.internalModel.hitTest(tempPoint.x, tempPoint.y);
+    }
+    toModelPosition(position, result = position.clone(), skipUpdate) {
+      if (!skipUpdate) {
+        this._recursivePostUpdateTransform();
+        if (!this.parent) {
+          this.parent = this._tempDisplayObjectParent;
+          this.displayObjectUpdateTransform();
+          this.parent = null;
+        } else {
+          this.displayObjectUpdateTransform();
+        }
+      }
+      this.transform.worldTransform.applyInverse(position, result);
+      this.internalModel.localTransform.applyInverse(result, result);
+      return result;
+    }
+    containsPoint(point) {
+      return this.getBounds(true).contains(point.x, point.y);
+    }
+    _calculateBounds() {
+      this._bounds.addFrame(this.transform, 0, 0, this.internalModel.width, this.internalModel.height);
+    }
+    onTickerUpdate() {
+      this.update(tickerRef.shared.deltaMS);
+    }
+    update(dt) {
+      this.deltaTime += dt;
+      this.elapsedTime += dt;
+      this.wasUpdated = true;
+    }
+    _render(renderer) {
+      if (!this.wasUpdated) {
+        return;
+      }
+      renderer.batch.reset();
+      renderer.geometry.reset();
+      renderer.shader.reset();
+      renderer.state.reset();
+      let shouldUpdateTexture = false;
+      if (this.glContextID !== renderer.CONTEXT_UID) {
+        this.glContextID = renderer.CONTEXT_UID;
+        this.internalModel.updateWebGLContext(renderer.gl, this.glContextID);
+        shouldUpdateTexture = true;
+      }
+      for (let i = 0; i < this.textures.length; i++) {
+        const texture = this.textures[i];
+        if (!texture.valid) {
+          continue;
+        }
+        if (shouldUpdateTexture || !texture.baseTexture._glTextures[this.glContextID]) {
+          renderer.gl.pixelStorei(WebGLRenderingContext.UNPACK_FLIP_Y_WEBGL, this.internalModel.textureFlipY);
+          renderer.texture.bind(texture.baseTexture, 0);
+        }
+        this.internalModel.bindTexture(i, texture.baseTexture._glTextures[this.glContextID].texture);
+        texture.baseTexture.touched = renderer.textureGC.count;
+      }
+      const viewport = renderer.framebuffer.viewport;
+      this.internalModel.viewport = [viewport.x, viewport.y, viewport.width, viewport.height];
+      if (this.deltaTime) {
+        this.internalModel.update(this.deltaTime, this.elapsedTime);
+        this.deltaTime = 0;
+      }
+      const internalTransform = tempMatrix$1.copyFrom(renderer.globalUniforms.uniforms.projectionMatrix).append(this.worldTransform);
+      this.internalModel.updateTransform(internalTransform);
+      this.internalModel.draw(renderer.gl);
+      renderer.state.reset();
+      renderer.texture.reset();
+    }
+    destroy(options) {
+      this.emit("destroy");
+      this.autoUpdate = false;
+      this.removeAllListeners();
+      this.textures.length = 0;
+      this.internalModel.destroy();
+      super.destroy(options);
+    }
+  }
+  applyMixins(Live2DModel, [InteractionMixin]);
   if (!window.Live2DCubismCore) {
     throw new Error("Could not find Cubism 4 runtime. This plugin requires live2dcubismcore.js to be loaded.");
   }
@@ -2347,7 +1863,9 @@ var __async = (__this, __arguments, generator) => {
       return Math.sqrt(this.x * this.x + this.y * this.y);
     }
     getDistanceWith(a) {
-      return Math.sqrt((this.x - a.x) * (this.x - a.x) + (this.y - a.y) * (this.y - a.y));
+      return Math.sqrt(
+        (this.x - a.x) * (this.x - a.x) + (this.y - a.y) * (this.y - a.y)
+      );
     }
     dot(a) {
       return this.x * a.x + this.y * a.y;
@@ -2790,7 +2308,13 @@ var __async = (__this, __arguments, generator) => {
         const minor = (version & 16711680) >> 16;
         const patch = version & 65535;
         const versionNumber = version;
-        CubismLogInfo(`Live2D Cubism Core version: {0}.{1}.{2} ({3})`, ("00" + major).slice(-2), ("00" + minor).slice(-2), ("0000" + patch).slice(-4), versionNumber);
+        CubismLogInfo(
+          `Live2D Cubism Core version: {0}.{1}.{2} ({3})`,
+          ("00" + major).slice(-2),
+          ("00" + minor).slice(-2),
+          ("0000" + patch).slice(-4),
+          versionNumber
+        );
       }
       CubismLogInfo("CubismFramework.startUp() is complete.");
       return s_isStarted;
@@ -2806,7 +2330,9 @@ var __async = (__this, __arguments, generator) => {
         return;
       }
       if (s_isInitialized) {
-        CubismLogWarning("CubismFramework.initialize() skipped, already initialized.");
+        CubismLogWarning(
+          "CubismFramework.initialize() skipped, already initialized."
+        );
         return;
       }
       s_isInitialized = true;
@@ -2916,15 +2442,26 @@ var __async = (__this, __arguments, generator) => {
         motionQueueEntry.setFadeInStartTime(userTimeSeconds);
         const duration = this.getDuration();
         if (motionQueueEntry.getEndTime() < 0) {
-          motionQueueEntry.setEndTime(duration <= 0 ? -1 : motionQueueEntry.getStartTime() + duration);
+          motionQueueEntry.setEndTime(
+            duration <= 0 ? -1 : motionQueueEntry.getStartTime() + duration
+          );
         }
       }
       let fadeWeight = this._weight;
-      const fadeIn = this._fadeInSeconds == 0 ? 1 : CubismMath.getEasingSine((userTimeSeconds - motionQueueEntry.getFadeInStartTime()) / this._fadeInSeconds);
-      const fadeOut = this._fadeOutSeconds == 0 || motionQueueEntry.getEndTime() < 0 ? 1 : CubismMath.getEasingSine((motionQueueEntry.getEndTime() - userTimeSeconds) / this._fadeOutSeconds);
+      const fadeIn = this._fadeInSeconds == 0 ? 1 : CubismMath.getEasingSine(
+        (userTimeSeconds - motionQueueEntry.getFadeInStartTime()) / this._fadeInSeconds
+      );
+      const fadeOut = this._fadeOutSeconds == 0 || motionQueueEntry.getEndTime() < 0 ? 1 : CubismMath.getEasingSine(
+        (motionQueueEntry.getEndTime() - userTimeSeconds) / this._fadeOutSeconds
+      );
       fadeWeight = fadeWeight * fadeIn * fadeOut;
       motionQueueEntry.setState(userTimeSeconds, fadeWeight);
-      this.doUpdateParameters(model, userTimeSeconds, fadeWeight, motionQueueEntry);
+      this.doUpdateParameters(
+        model,
+        userTimeSeconds,
+        fadeWeight,
+        motionQueueEntry
+      );
       if (motionQueueEntry.getEndTime() > 0 && motionQueueEntry.getEndTime() < userTimeSeconds) {
         motionQueueEntry.setIsFinished(true);
       }
@@ -3010,15 +2547,27 @@ var __async = (__this, __arguments, generator) => {
         const parameter = this._parameters[i];
         switch (parameter.blendType) {
           case ExpressionBlendType.ExpressionBlendType_Add: {
-            model.addParameterValueById(parameter.parameterId, parameter.value, weight);
+            model.addParameterValueById(
+              parameter.parameterId,
+              parameter.value,
+              weight
+            );
             break;
           }
           case ExpressionBlendType.ExpressionBlendType_Multiply: {
-            model.multiplyParameterValueById(parameter.parameterId, parameter.value, weight);
+            model.multiplyParameterValueById(
+              parameter.parameterId,
+              parameter.value,
+              weight
+            );
             break;
           }
           case ExpressionBlendType.ExpressionBlendType_Overwrite: {
-            model.setParameterValueById(parameter.parameterId, parameter.value, weight);
+            model.setParameterValueById(
+              parameter.parameterId,
+              parameter.value,
+              weight
+            );
             break;
           }
         }
@@ -3220,7 +2769,10 @@ var __async = (__this, __arguments, generator) => {
         }
         motion.updateParameters(model, motionQueueEntry, userTimeSeconds);
         updated = true;
-        const firedList = motion.getFiredEvent(motionQueueEntry.getLastCheckEventSeconds() - motionQueueEntry.getStartTime(), userTimeSeconds - motionQueueEntry.getStartTime());
+        const firedList = motion.getFiredEvent(
+          motionQueueEntry.getLastCheckEventSeconds() - motionQueueEntry.getStartTime(),
+          userTimeSeconds - motionQueueEntry.getStartTime()
+        );
         for (let i2 = 0; i2 < firedList.length; ++i2) {
           this._eventCallBack(this, firedList[i2], this._eventCustomData);
         }
@@ -3230,7 +2782,10 @@ var __async = (__this, __arguments, generator) => {
           this._motions.splice(i, 1);
         } else {
           if (motionQueueEntry.isTriggeredFadeOut()) {
-            motionQueueEntry.startFadeOut(motionQueueEntry.getFadeOutSeconds(), userTimeSeconds);
+            motionQueueEntry.startFadeOut(
+              motionQueueEntry.getFadeOutSeconds(),
+              userTimeSeconds
+            );
           }
           i++;
         }
@@ -3241,10 +2796,10 @@ var __async = (__this, __arguments, generator) => {
   const InvalidMotionQueueEntryHandleValue = -1;
   class Cubism4ExpressionManager extends ExpressionManager {
     constructor(settings, options) {
-      var _a;
+      var _a2;
       super(settings, options);
       this.queueManager = new CubismMotionQueueManager();
-      this.definitions = (_a = settings.expressions) != null ? _a : [];
+      this.definitions = (_a2 = settings.expressions) != null ? _a2 : [];
       this.init();
     }
     isFinished() {
@@ -3282,12 +2837,12 @@ var __async = (__this, __arguments, generator) => {
       this.pose = json.FileReferences.Pose;
     }
     getEyeBlinkParameters() {
-      var _a, _b;
-      return (_b = (_a = this.groups) == null ? void 0 : _a.find((group) => group.Name === "EyeBlink")) == null ? void 0 : _b.Ids;
+      var _a2, _b2;
+      return (_b2 = (_a2 = this.groups) == null ? void 0 : _a2.find((group) => group.Name === "EyeBlink")) == null ? void 0 : _b2.Ids;
     }
     getLipSyncParameters() {
-      var _a, _b;
-      return (_b = (_a = this.groups) == null ? void 0 : _a.find((group) => group.Name === "LipSync")) == null ? void 0 : _b.Ids;
+      var _a2, _b2;
+      return (_b2 = (_a2 = this.groups) == null ? void 0 : _a2.find((group) => group.Name === "LipSync")) == null ? void 0 : _b2.Ids;
     }
   }
   class Cubism4ModelSettings extends ModelSettings {
@@ -3299,8 +2854,8 @@ var __async = (__this, __arguments, generator) => {
       Object.assign(this, new CubismModelSettingsJson(json));
     }
     static isValidJSON(json) {
-      var _a;
-      return !!(json == null ? void 0 : json.FileReferences) && typeof json.FileReferences.Moc === "string" && ((_a = json.FileReferences.Textures) == null ? void 0 : _a.length) > 0 && json.FileReferences.Textures.every((item) => typeof item === "string");
+      var _a2;
+      return !!(json == null ? void 0 : json.FileReferences) && typeof json.FileReferences.Moc === "string" && ((_a2 = json.FileReferences.Textures) == null ? void 0 : _a2.length) > 0 && json.FileReferences.Textures.every((item) => typeof item === "string");
     }
     replaceFiles(replace) {
       super.replaceFiles(replace);
@@ -3519,7 +3074,10 @@ var __async = (__this, __arguments, generator) => {
       return motionData.points[pointPosition].value;
     }
     const segment = motionData.segments[target];
-    return segment.evaluate(motionData.points.slice(segment.basePointIndex), time);
+    return segment.evaluate(
+      motionData.points.slice(segment.basePointIndex),
+      time
+    );
   }
   class CubismMotion extends ACubismMotion {
     constructor() {
@@ -3557,13 +3115,23 @@ var __async = (__this, __arguments, generator) => {
       let lipSyncFlags = 0;
       let eyeBlinkFlags = 0;
       if (this._eyeBlinkParameterIds.length > MaxTargetSize) {
-        CubismLogDebug("too many eye blink targets : {0}", this._eyeBlinkParameterIds.length);
+        CubismLogDebug(
+          "too many eye blink targets : {0}",
+          this._eyeBlinkParameterIds.length
+        );
       }
       if (this._lipSyncParameterIds.length > MaxTargetSize) {
-        CubismLogDebug("too many lip sync targets : {0}", this._lipSyncParameterIds.length);
+        CubismLogDebug(
+          "too many lip sync targets : {0}",
+          this._lipSyncParameterIds.length
+        );
       }
-      const tmpFadeIn = this._fadeInSeconds <= 0 ? 1 : CubismMath.getEasingSine((userTimeSeconds - motionQueueEntry.getFadeInStartTime()) / this._fadeInSeconds);
-      const tmpFadeOut = this._fadeOutSeconds <= 0 || motionQueueEntry.getEndTime() < 0 ? 1 : CubismMath.getEasingSine((motionQueueEntry.getEndTime() - userTimeSeconds) / this._fadeOutSeconds);
+      const tmpFadeIn = this._fadeInSeconds <= 0 ? 1 : CubismMath.getEasingSine(
+        (userTimeSeconds - motionQueueEntry.getFadeInStartTime()) / this._fadeInSeconds
+      );
+      const tmpFadeOut = this._fadeOutSeconds <= 0 || motionQueueEntry.getEndTime() < 0 ? 1 : CubismMath.getEasingSine(
+        (motionQueueEntry.getEndTime() - userTimeSeconds) / this._fadeOutSeconds
+      );
       let value;
       let c, parameterIndex;
       let time = timeOffsetSeconds;
@@ -3586,7 +3154,9 @@ var __async = (__this, __arguments, generator) => {
         if (parameterIndex == -1) {
           continue;
         }
-        const sourceValue = model.getParameterValueByIndex(parameterIndex);
+        const sourceValue = model.getParameterValueByIndex(
+          parameterIndex
+        );
         value = evaluateCurve(this._motionData, c, time);
         if (eyeBlinkValue != Number.MAX_VALUE) {
           for (let i = 0; i < this._eyeBlinkParameterIds.length && i < MaxTargetSize; ++i) {
@@ -3615,12 +3185,16 @@ var __async = (__this, __arguments, generator) => {
           if (curves[c].fadeInTime < 0) {
             fin = tmpFadeIn;
           } else {
-            fin = curves[c].fadeInTime == 0 ? 1 : CubismMath.getEasingSine((userTimeSeconds - motionQueueEntry.getFadeInStartTime()) / curves[c].fadeInTime);
+            fin = curves[c].fadeInTime == 0 ? 1 : CubismMath.getEasingSine(
+              (userTimeSeconds - motionQueueEntry.getFadeInStartTime()) / curves[c].fadeInTime
+            );
           }
           if (curves[c].fadeOutTime < 0) {
             fout = tmpFadeOut;
           } else {
-            fout = curves[c].fadeOutTime == 0 || motionQueueEntry.getEndTime() < 0 ? 1 : CubismMath.getEasingSine((motionQueueEntry.getEndTime() - userTimeSeconds) / curves[c].fadeOutTime);
+            fout = curves[c].fadeOutTime == 0 || motionQueueEntry.getEndTime() < 0 ? 1 : CubismMath.getEasingSine(
+              (motionQueueEntry.getEndTime() - userTimeSeconds) / curves[c].fadeOutTime
+            );
           }
           const paramWeight = this._weight * fin * fout;
           v = sourceValue + (value - sourceValue) * paramWeight;
@@ -3630,7 +3204,9 @@ var __async = (__this, __arguments, generator) => {
       {
         if (eyeBlinkValue != Number.MAX_VALUE) {
           for (let i = 0; i < this._eyeBlinkParameterIds.length && i < MaxTargetSize; ++i) {
-            const sourceValue = model.getParameterValueById(this._eyeBlinkParameterIds[i]);
+            const sourceValue = model.getParameterValueById(
+              this._eyeBlinkParameterIds[i]
+            );
             if (eyeBlinkFlags >> i & 1) {
               continue;
             }
@@ -3640,7 +3216,9 @@ var __async = (__this, __arguments, generator) => {
         }
         if (lipSyncValue != Number.MAX_VALUE) {
           for (let i = 0; i < this._lipSyncParameterIds.length && i < MaxTargetSize; ++i) {
-            const sourceValue = model.getParameterValueById(this._lipSyncParameterIds[i]);
+            const sourceValue = model.getParameterValueById(
+              this._lipSyncParameterIds[i]
+            );
             if (lipSyncFlags >> i & 1) {
               continue;
             }
@@ -3745,7 +3323,9 @@ var __async = (__this, __arguments, generator) => {
       this._motionData.curveCount = json.getMotionCurveCount();
       this._motionData.fps = json.getMotionFps();
       this._motionData.eventCount = json.getEventCount();
-      const areBeziersRestructed = json.getEvaluationOptionFlag(EvaluationOptionFlag.EvaluationOptionFlag_AreBeziersRistricted);
+      const areBeziersRestructed = json.getEvaluationOptionFlag(
+        EvaluationOptionFlag.EvaluationOptionFlag_AreBeziersRistricted
+      );
       const fadeInSeconds = json.getMotionFadeInTime();
       const fadeOutSeconds = json.getMotionFadeOutTime();
       if (fadeInSeconds !== void 0) {
@@ -3777,7 +3357,9 @@ var __async = (__this, __arguments, generator) => {
             curve.type = CubismMotionCurveTarget.CubismMotionCurveTarget_PartOpacity;
             break;
           default:
-            CubismLogWarning('Warning : Unable to get segment type from Curve! The number of "CurveCount" may be incorrect!');
+            CubismLogWarning(
+              'Warning : Unable to get segment type from Curve! The number of "CurveCount" may be incorrect!'
+            );
         }
         curve.id = json.getMotionCurveId(curveCount);
         curve.baseSegmentIndex = totalSegmentCount;
@@ -3788,18 +3370,27 @@ var __async = (__this, __arguments, generator) => {
         for (let segmentPosition = 0; segmentPosition < json.getMotionCurveSegmentCount(curveCount); ) {
           if (segmentPosition == 0) {
             this._motionData.segments[totalSegmentCount].basePointIndex = totalPointCount;
-            this._motionData.points[totalPointCount] = new CubismMotionPoint(json.getMotionCurveSegment(curveCount, segmentPosition), json.getMotionCurveSegment(curveCount, segmentPosition + 1));
+            this._motionData.points[totalPointCount] = new CubismMotionPoint(
+              json.getMotionCurveSegment(curveCount, segmentPosition),
+              json.getMotionCurveSegment(curveCount, segmentPosition + 1)
+            );
             totalPointCount += 1;
             segmentPosition += 2;
           } else {
             this._motionData.segments[totalSegmentCount].basePointIndex = totalPointCount - 1;
           }
-          const segment = json.getMotionCurveSegment(curveCount, segmentPosition);
+          const segment = json.getMotionCurveSegment(
+            curveCount,
+            segmentPosition
+          );
           switch (segment) {
             case CubismMotionSegmentType.CubismMotionSegmentType_Linear: {
               this._motionData.segments[totalSegmentCount].segmentType = CubismMotionSegmentType.CubismMotionSegmentType_Linear;
               this._motionData.segments[totalSegmentCount].evaluate = linearEvaluate;
-              this._motionData.points[totalPointCount] = new CubismMotionPoint(json.getMotionCurveSegment(curveCount, segmentPosition + 1), json.getMotionCurveSegment(curveCount, segmentPosition + 2));
+              this._motionData.points[totalPointCount] = new CubismMotionPoint(
+                json.getMotionCurveSegment(curveCount, segmentPosition + 1),
+                json.getMotionCurveSegment(curveCount, segmentPosition + 2)
+              );
               totalPointCount += 1;
               segmentPosition += 3;
               break;
@@ -3811,9 +3402,18 @@ var __async = (__this, __arguments, generator) => {
               } else {
                 this._motionData.segments[totalSegmentCount].evaluate = bezierEvaluateCardanoInterpretation;
               }
-              this._motionData.points[totalPointCount] = new CubismMotionPoint(json.getMotionCurveSegment(curveCount, segmentPosition + 1), json.getMotionCurveSegment(curveCount, segmentPosition + 2));
-              this._motionData.points[totalPointCount + 1] = new CubismMotionPoint(json.getMotionCurveSegment(curveCount, segmentPosition + 3), json.getMotionCurveSegment(curveCount, segmentPosition + 4));
-              this._motionData.points[totalPointCount + 2] = new CubismMotionPoint(json.getMotionCurveSegment(curveCount, segmentPosition + 5), json.getMotionCurveSegment(curveCount, segmentPosition + 6));
+              this._motionData.points[totalPointCount] = new CubismMotionPoint(
+                json.getMotionCurveSegment(curveCount, segmentPosition + 1),
+                json.getMotionCurveSegment(curveCount, segmentPosition + 2)
+              );
+              this._motionData.points[totalPointCount + 1] = new CubismMotionPoint(
+                json.getMotionCurveSegment(curveCount, segmentPosition + 3),
+                json.getMotionCurveSegment(curveCount, segmentPosition + 4)
+              );
+              this._motionData.points[totalPointCount + 2] = new CubismMotionPoint(
+                json.getMotionCurveSegment(curveCount, segmentPosition + 5),
+                json.getMotionCurveSegment(curveCount, segmentPosition + 6)
+              );
               totalPointCount += 3;
               segmentPosition += 7;
               break;
@@ -3821,7 +3421,10 @@ var __async = (__this, __arguments, generator) => {
             case CubismMotionSegmentType.CubismMotionSegmentType_Stepped: {
               this._motionData.segments[totalSegmentCount].segmentType = CubismMotionSegmentType.CubismMotionSegmentType_Stepped;
               this._motionData.segments[totalSegmentCount].evaluate = steppedEvaluate;
-              this._motionData.points[totalPointCount] = new CubismMotionPoint(json.getMotionCurveSegment(curveCount, segmentPosition + 1), json.getMotionCurveSegment(curveCount, segmentPosition + 2));
+              this._motionData.points[totalPointCount] = new CubismMotionPoint(
+                json.getMotionCurveSegment(curveCount, segmentPosition + 1),
+                json.getMotionCurveSegment(curveCount, segmentPosition + 2)
+              );
               totalPointCount += 1;
               segmentPosition += 3;
               break;
@@ -3829,7 +3432,10 @@ var __async = (__this, __arguments, generator) => {
             case CubismMotionSegmentType.CubismMotionSegmentType_InverseStepped: {
               this._motionData.segments[totalSegmentCount].segmentType = CubismMotionSegmentType.CubismMotionSegmentType_InverseStepped;
               this._motionData.segments[totalSegmentCount].evaluate = inverseSteppedEvaluate;
-              this._motionData.points[totalPointCount] = new CubismMotionPoint(json.getMotionCurveSegment(curveCount, segmentPosition + 1), json.getMotionCurveSegment(curveCount, segmentPosition + 2));
+              this._motionData.points[totalPointCount] = new CubismMotionPoint(
+                json.getMotionCurveSegment(curveCount, segmentPosition + 1),
+                json.getMotionCurveSegment(curveCount, segmentPosition + 2)
+              );
               totalPointCount += 1;
               segmentPosition += 3;
               break;
@@ -3841,8 +3447,12 @@ var __async = (__this, __arguments, generator) => {
         this._motionData.curves.push(curve);
       }
       for (let userdatacount = 0; userdatacount < json.getEventCount(); ++userdatacount) {
-        this._motionData.events[userdatacount].fireTime = json.getEventTime(userdatacount);
-        this._motionData.events[userdatacount].value = json.getEventValue(userdatacount);
+        this._motionData.events[userdatacount].fireTime = json.getEventTime(
+          userdatacount
+        );
+        this._motionData.events[userdatacount].value = json.getEventValue(
+          userdatacount
+        );
       }
       json.release();
     }
@@ -3858,12 +3468,12 @@ var __async = (__this, __arguments, generator) => {
   }
   class Cubism4MotionManager extends MotionManager {
     constructor(settings, options) {
-      var _a;
+      var _a2;
       super(settings, options);
       this.groups = { idle: "Idle" };
       this.motionDataType = "json";
       this.queueManager = new CubismMotionQueueManager();
-      this.definitions = (_a = settings.motions) != null ? _a : {};
+      this.definitions = (_a2 = settings.motions) != null ? _a2 : {};
       this.eyeBlinkIds = settings.getEyeBlinkParameters() || [];
       this.lipSyncIds = settings.getLipSyncParameters() || [];
       this.init(options);
@@ -3946,7 +3556,11 @@ var __async = (__this, __arguments, generator) => {
       const t = this._currentTime * 2 * 3.14159;
       for (let i = 0; i < this._breathParameters.length; ++i) {
         const data = this._breathParameters[i];
-        model.addParameterValueById(data.parameterId, data.offset + data.peak * Math.sin(t / data.cycle), data.weight);
+        model.addParameterValueById(
+          data.parameterId,
+          data.offset + data.peak * Math.sin(t / data.cycle),
+          data.weight
+        );
       }
     }
   }
@@ -4030,7 +3644,7 @@ var __async = (__this, __arguments, generator) => {
       }
     }
     constructor(modelSetting) {
-      var _a, _b;
+      var _a2, _b2;
       this._blinkingState = EyeState.EyeState_First;
       this._nextBlinkingTime = 0;
       this._stateStartTimeSeconds = 0;
@@ -4043,7 +3657,7 @@ var __async = (__this, __arguments, generator) => {
       if (modelSetting == null) {
         return;
       }
-      this._parameterIds = (_b = (_a = modelSetting.getEyeBlinkParameters()) == null ? void 0 : _a.slice()) != null ? _b : this._parameterIds;
+      this._parameterIds = (_b2 = (_a2 = modelSetting.getEyeBlinkParameters()) == null ? void 0 : _a2.slice()) != null ? _b2 : this._parameterIds;
     }
     determinNextBlinkingTiming() {
       const r = Math.random();
@@ -4111,17 +3725,52 @@ var __async = (__this, __arguments, generator) => {
         const size = this._clippingMaskBufferSize;
         this._colorBuffer = this.gl.createTexture();
         this.gl.bindTexture(this.gl.TEXTURE_2D, this._colorBuffer);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, size, size, 0, this.gl.RGBA, this.gl.UNSIGNED_BYTE, null);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+        this.gl.texImage2D(
+          this.gl.TEXTURE_2D,
+          0,
+          this.gl.RGBA,
+          size,
+          size,
+          0,
+          this.gl.RGBA,
+          this.gl.UNSIGNED_BYTE,
+          null
+        );
+        this.gl.texParameteri(
+          this.gl.TEXTURE_2D,
+          this.gl.TEXTURE_WRAP_S,
+          this.gl.CLAMP_TO_EDGE
+        );
+        this.gl.texParameteri(
+          this.gl.TEXTURE_2D,
+          this.gl.TEXTURE_WRAP_T,
+          this.gl.CLAMP_TO_EDGE
+        );
+        this.gl.texParameteri(
+          this.gl.TEXTURE_2D,
+          this.gl.TEXTURE_MIN_FILTER,
+          this.gl.LINEAR
+        );
+        this.gl.texParameteri(
+          this.gl.TEXTURE_2D,
+          this.gl.TEXTURE_MAG_FILTER,
+          this.gl.LINEAR
+        );
         this.gl.bindTexture(this.gl.TEXTURE_2D, null);
         ret = this.gl.createFramebuffer();
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, ret);
-        this.gl.framebufferTexture2D(this.gl.FRAMEBUFFER, this.gl.COLOR_ATTACHMENT0, this.gl.TEXTURE_2D, this._colorBuffer, 0);
+        this.gl.framebufferTexture2D(
+          this.gl.FRAMEBUFFER,
+          this.gl.COLOR_ATTACHMENT0,
+          this.gl.TEXTURE_2D,
+          this._colorBuffer,
+          0
+        );
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, s_fbo);
-        this._maskTexture = new CubismRenderTextureResource(this._currentFrameNo, ret);
+        this._maskTexture = new CubismRenderTextureResource(
+          this._currentFrameNo,
+          ret
+        );
       }
       return ret;
     }
@@ -4136,8 +3785,12 @@ var __async = (__this, __arguments, generator) => {
       const clippedDrawCount = clippingContext._clippedDrawableIndexList.length;
       for (let clippedDrawableIndex = 0; clippedDrawableIndex < clippedDrawCount; clippedDrawableIndex++) {
         const drawableIndex = clippingContext._clippedDrawableIndexList[clippedDrawableIndex];
-        const drawableVertexCount = model.getDrawableVertexCount(drawableIndex);
-        const drawableVertexes = model.getDrawableVertices(drawableIndex);
+        const drawableVertexCount = model.getDrawableVertexCount(
+          drawableIndex
+        );
+        const drawableVertexes = model.getDrawableVertices(
+          drawableIndex
+        );
         let minX = Number.MAX_VALUE;
         let minY = Number.MAX_VALUE;
         let maxX = Number.MIN_VALUE;
@@ -4229,17 +3882,17 @@ var __async = (__this, __arguments, generator) => {
       this._channelColors.push(tmp);
     }
     release() {
-      var _a, _b, _c;
+      var _a2, _b2, _c;
       const self2 = this;
       for (let i = 0; i < this._clippingContextListForMask.length; i++) {
         if (this._clippingContextListForMask[i]) {
-          (_a = this._clippingContextListForMask[i]) == null ? void 0 : _a.release();
+          (_a2 = this._clippingContextListForMask[i]) == null ? void 0 : _a2.release();
         }
       }
       self2._clippingContextListForMask = void 0;
       self2._clippingContextListForDraw = void 0;
       if (this._maskTexture) {
-        (_b = this.gl) == null ? void 0 : _b.deleteFramebuffer(this._maskTexture.texture);
+        (_b2 = this.gl) == null ? void 0 : _b2.deleteFramebuffer(this._maskTexture.texture);
         self2._maskTexture = void 0;
       }
       self2._channelColors = void 0;
@@ -4252,9 +3905,16 @@ var __async = (__this, __arguments, generator) => {
           this._clippingContextListForDraw.push(null);
           continue;
         }
-        let clippingContext = this.findSameClip(drawableMasks[i], drawableMaskCounts[i]);
+        let clippingContext = this.findSameClip(
+          drawableMasks[i],
+          drawableMaskCounts[i]
+        );
         if (clippingContext == null) {
-          clippingContext = new CubismClippingContext(this, drawableMasks[i], drawableMaskCounts[i]);
+          clippingContext = new CubismClippingContext(
+            this,
+            drawableMasks[i],
+            drawableMaskCounts[i]
+          );
           this._clippingContextListForMask.push(clippingContext);
         }
         clippingContext.addClippedDrawable(i);
@@ -4272,7 +3932,12 @@ var __async = (__this, __arguments, generator) => {
         }
       }
       if (usingClipCount > 0) {
-        this.gl.viewport(0, 0, this._clippingMaskBufferSize, this._clippingMaskBufferSize);
+        this.gl.viewport(
+          0,
+          0,
+          this._clippingMaskBufferSize,
+          this._clippingMaskBufferSize
+        );
         this._maskRenderTexture = this.getMaskRenderTexture();
         renderer.getMvpMatrix();
         renderer.preDraw();
@@ -4286,7 +3951,10 @@ var __async = (__this, __arguments, generator) => {
           const layoutBoundsOnTex01 = clipContext._layoutBounds;
           const MARGIN = 0.05;
           this._tmpBoundsOnModel.setRect(allClipedDrawRect);
-          this._tmpBoundsOnModel.expand(allClipedDrawRect.width * MARGIN, allClipedDrawRect.height * MARGIN);
+          this._tmpBoundsOnModel.expand(
+            allClipedDrawRect.width * MARGIN,
+            allClipedDrawRect.height * MARGIN
+          );
           const scaleX = layoutBoundsOnTex01.width / this._tmpBoundsOnModel.width;
           const scaleY = layoutBoundsOnTex01.height / this._tmpBoundsOnModel.height;
           {
@@ -4296,37 +3964,72 @@ var __async = (__this, __arguments, generator) => {
               this._tmpMatrix.scaleRelative(2, 2);
             }
             {
-              this._tmpMatrix.translateRelative(layoutBoundsOnTex01.x, layoutBoundsOnTex01.y);
+              this._tmpMatrix.translateRelative(
+                layoutBoundsOnTex01.x,
+                layoutBoundsOnTex01.y
+              );
               this._tmpMatrix.scaleRelative(scaleX, scaleY);
-              this._tmpMatrix.translateRelative(-this._tmpBoundsOnModel.x, -this._tmpBoundsOnModel.y);
+              this._tmpMatrix.translateRelative(
+                -this._tmpBoundsOnModel.x,
+                -this._tmpBoundsOnModel.y
+              );
             }
             this._tmpMatrixForMask.setMatrix(this._tmpMatrix.getArray());
           }
           {
             this._tmpMatrix.loadIdentity();
             {
-              this._tmpMatrix.translateRelative(layoutBoundsOnTex01.x, layoutBoundsOnTex01.y);
+              this._tmpMatrix.translateRelative(
+                layoutBoundsOnTex01.x,
+                layoutBoundsOnTex01.y
+              );
               this._tmpMatrix.scaleRelative(scaleX, scaleY);
-              this._tmpMatrix.translateRelative(-this._tmpBoundsOnModel.x, -this._tmpBoundsOnModel.y);
+              this._tmpMatrix.translateRelative(
+                -this._tmpBoundsOnModel.x,
+                -this._tmpBoundsOnModel.y
+              );
             }
             this._tmpMatrixForDraw.setMatrix(this._tmpMatrix.getArray());
           }
-          clipContext._matrixForMask.setMatrix(this._tmpMatrixForMask.getArray());
-          clipContext._matrixForDraw.setMatrix(this._tmpMatrixForDraw.getArray());
+          clipContext._matrixForMask.setMatrix(
+            this._tmpMatrixForMask.getArray()
+          );
+          clipContext._matrixForDraw.setMatrix(
+            this._tmpMatrixForDraw.getArray()
+          );
           const clipDrawCount = clipContext._clippingIdCount;
           for (let i = 0; i < clipDrawCount; i++) {
             const clipDrawIndex = clipContext._clippingIdList[i];
-            if (!model.getDrawableDynamicFlagVertexPositionsDidChange(clipDrawIndex)) {
+            if (!model.getDrawableDynamicFlagVertexPositionsDidChange(
+              clipDrawIndex
+            )) {
               continue;
             }
-            renderer.setIsCulling(model.getDrawableCulling(clipDrawIndex) != false);
+            renderer.setIsCulling(
+              model.getDrawableCulling(clipDrawIndex) != false
+            );
             renderer.setClippingContextBufferForMask(clipContext);
-            renderer.drawMesh(model.getDrawableTextureIndices(clipDrawIndex), model.getDrawableVertexIndexCount(clipDrawIndex), model.getDrawableVertexCount(clipDrawIndex), model.getDrawableVertexIndices(clipDrawIndex), model.getDrawableVertices(clipDrawIndex), model.getDrawableVertexUvs(clipDrawIndex), model.getDrawableOpacity(clipDrawIndex), CubismBlendMode.CubismBlendMode_Normal, false);
+            renderer.drawMesh(
+              model.getDrawableTextureIndices(clipDrawIndex),
+              model.getDrawableVertexIndexCount(clipDrawIndex),
+              model.getDrawableVertexCount(clipDrawIndex),
+              model.getDrawableVertexIndices(clipDrawIndex),
+              model.getDrawableVertices(clipDrawIndex),
+              model.getDrawableVertexUvs(clipDrawIndex),
+              model.getDrawableOpacity(clipDrawIndex),
+              CubismBlendMode.CubismBlendMode_Normal,
+              false
+            );
           }
         }
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, s_fbo);
         renderer.setClippingContextBufferForMask(null);
-        this.gl.viewport(s_viewport[0], s_viewport[1], s_viewport[2], s_viewport[3]);
+        this.gl.viewport(
+          s_viewport[0],
+          s_viewport[1],
+          s_viewport[2],
+          s_viewport[3]
+        );
       }
     }
     findSameClip(drawableMasks, drawableMaskCounts) {
@@ -4513,22 +4216,56 @@ var __async = (__this, __arguments, generator) => {
           bufferData.vertex = this.gl.createBuffer();
         }
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferData.vertex);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, vertexArray, this.gl.DYNAMIC_DRAW);
+        this.gl.bufferData(
+          this.gl.ARRAY_BUFFER,
+          vertexArray,
+          this.gl.DYNAMIC_DRAW
+        );
         this.gl.enableVertexAttribArray(shaderSet.attributePositionLocation);
-        this.gl.vertexAttribPointer(shaderSet.attributePositionLocation, 2, this.gl.FLOAT, false, 0, 0);
+        this.gl.vertexAttribPointer(
+          shaderSet.attributePositionLocation,
+          2,
+          this.gl.FLOAT,
+          false,
+          0,
+          0
+        );
         if (bufferData.uv == null) {
           bufferData.uv = this.gl.createBuffer();
         }
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferData.uv);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, uvArray, this.gl.DYNAMIC_DRAW);
         this.gl.enableVertexAttribArray(shaderSet.attributeTexCoordLocation);
-        this.gl.vertexAttribPointer(shaderSet.attributeTexCoordLocation, 2, this.gl.FLOAT, false, 0, 0);
+        this.gl.vertexAttribPointer(
+          shaderSet.attributeTexCoordLocation,
+          2,
+          this.gl.FLOAT,
+          false,
+          0,
+          0
+        );
         const channelNo = clippingContextBufferForMask._layoutChannelNo;
         const colorChannel = clippingContextBufferForMask.getClippingManager().getChannelFlagAsColor(channelNo);
-        this.gl.uniform4f(shaderSet.uniformChannelFlagLocation, colorChannel.R, colorChannel.G, colorChannel.B, colorChannel.A);
-        this.gl.uniformMatrix4fv(shaderSet.uniformClipMatrixLocation, false, clippingContextBufferForMask._matrixForMask.getArray());
+        this.gl.uniform4f(
+          shaderSet.uniformChannelFlagLocation,
+          colorChannel.R,
+          colorChannel.G,
+          colorChannel.B,
+          colorChannel.A
+        );
+        this.gl.uniformMatrix4fv(
+          shaderSet.uniformClipMatrixLocation,
+          false,
+          clippingContextBufferForMask._matrixForMask.getArray()
+        );
         const rect = clippingContextBufferForMask._layoutBounds;
-        this.gl.uniform4f(shaderSet.uniformBaseColorLocation, rect.x * 2 - 1, rect.y * 2 - 1, rect.getRight() * 2 - 1, rect.getBottom() * 2 - 1);
+        this.gl.uniform4f(
+          shaderSet.uniformBaseColorLocation,
+          rect.x * 2 - 1,
+          rect.y * 2 - 1,
+          rect.getRight() * 2 - 1,
+          rect.getBottom() * 2 - 1
+        );
         SRC_COLOR = this.gl.ZERO;
         DST_COLOR = this.gl.ONE_MINUS_SRC_COLOR;
         SRC_ALPHA = this.gl.ZERO;
@@ -4567,37 +4304,79 @@ var __async = (__this, __arguments, generator) => {
           bufferData.vertex = this.gl.createBuffer();
         }
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferData.vertex);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, vertexArray, this.gl.DYNAMIC_DRAW);
+        this.gl.bufferData(
+          this.gl.ARRAY_BUFFER,
+          vertexArray,
+          this.gl.DYNAMIC_DRAW
+        );
         this.gl.enableVertexAttribArray(shaderSet.attributePositionLocation);
-        this.gl.vertexAttribPointer(shaderSet.attributePositionLocation, 2, this.gl.FLOAT, false, 0, 0);
+        this.gl.vertexAttribPointer(
+          shaderSet.attributePositionLocation,
+          2,
+          this.gl.FLOAT,
+          false,
+          0,
+          0
+        );
         if (bufferData.uv == null) {
           bufferData.uv = this.gl.createBuffer();
         }
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, bufferData.uv);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, uvArray, this.gl.DYNAMIC_DRAW);
         this.gl.enableVertexAttribArray(shaderSet.attributeTexCoordLocation);
-        this.gl.vertexAttribPointer(shaderSet.attributeTexCoordLocation, 2, this.gl.FLOAT, false, 0, 0);
+        this.gl.vertexAttribPointer(
+          shaderSet.attributeTexCoordLocation,
+          2,
+          this.gl.FLOAT,
+          false,
+          0,
+          0
+        );
         if (clippingContextBufferForDraw != null) {
           this.gl.activeTexture(this.gl.TEXTURE1);
           const tex = clippingContextBufferForDraw.getClippingManager().getColorBuffer();
           this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
           this.gl.uniform1i(shaderSet.samplerTexture1Location, 1);
-          this.gl.uniformMatrix4fv(shaderSet.uniformClipMatrixLocation, false, clippingContextBufferForDraw._matrixForDraw.getArray());
+          this.gl.uniformMatrix4fv(
+            shaderSet.uniformClipMatrixLocation,
+            false,
+            clippingContextBufferForDraw._matrixForDraw.getArray()
+          );
           const channelNo = clippingContextBufferForDraw._layoutChannelNo;
           const colorChannel = clippingContextBufferForDraw.getClippingManager().getChannelFlagAsColor(channelNo);
-          this.gl.uniform4f(shaderSet.uniformChannelFlagLocation, colorChannel.R, colorChannel.G, colorChannel.B, colorChannel.A);
+          this.gl.uniform4f(
+            shaderSet.uniformChannelFlagLocation,
+            colorChannel.R,
+            colorChannel.G,
+            colorChannel.B,
+            colorChannel.A
+          );
         }
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, textureId);
         this.gl.uniform1i(shaderSet.samplerTexture0Location, 0);
-        this.gl.uniformMatrix4fv(shaderSet.uniformMatrixLocation, false, matrix4x4.getArray());
-        this.gl.uniform4f(shaderSet.uniformBaseColorLocation, baseColor.R, baseColor.G, baseColor.B, baseColor.A);
+        this.gl.uniformMatrix4fv(
+          shaderSet.uniformMatrixLocation,
+          false,
+          matrix4x4.getArray()
+        );
+        this.gl.uniform4f(
+          shaderSet.uniformBaseColorLocation,
+          baseColor.R,
+          baseColor.G,
+          baseColor.B,
+          baseColor.A
+        );
       }
       if (bufferData.index == null) {
         bufferData.index = this.gl.createBuffer();
       }
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, bufferData.index);
-      this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, indexArray, this.gl.DYNAMIC_DRAW);
+      this.gl.bufferData(
+        this.gl.ELEMENT_ARRAY_BUFFER,
+        indexArray,
+        this.gl.DYNAMIC_DRAW
+      );
       this.gl.blendFuncSeparate(SRC_COLOR, DST_COLOR, SRC_ALPHA, DST_ALPHA);
     }
     releaseShaderProgram() {
@@ -4611,94 +4390,319 @@ var __async = (__this, __arguments, generator) => {
       for (let i = 0; i < shaderCount; i++) {
         this._shaderSets.push({});
       }
-      this._shaderSets[0].shaderProgram = this.loadShaderProgram(vertexShaderSrcSetupMask, fragmentShaderSrcsetupMask);
-      this._shaderSets[1].shaderProgram = this.loadShaderProgram(vertexShaderSrc, fragmentShaderSrcPremultipliedAlpha);
-      this._shaderSets[2].shaderProgram = this.loadShaderProgram(vertexShaderSrcMasked, fragmentShaderSrcMaskPremultipliedAlpha);
-      this._shaderSets[3].shaderProgram = this.loadShaderProgram(vertexShaderSrcMasked, fragmentShaderSrcMaskInvertedPremultipliedAlpha);
+      this._shaderSets[0].shaderProgram = this.loadShaderProgram(
+        vertexShaderSrcSetupMask,
+        fragmentShaderSrcsetupMask
+      );
+      this._shaderSets[1].shaderProgram = this.loadShaderProgram(
+        vertexShaderSrc,
+        fragmentShaderSrcPremultipliedAlpha
+      );
+      this._shaderSets[2].shaderProgram = this.loadShaderProgram(
+        vertexShaderSrcMasked,
+        fragmentShaderSrcMaskPremultipliedAlpha
+      );
+      this._shaderSets[3].shaderProgram = this.loadShaderProgram(
+        vertexShaderSrcMasked,
+        fragmentShaderSrcMaskInvertedPremultipliedAlpha
+      );
       this._shaderSets[4].shaderProgram = this._shaderSets[1].shaderProgram;
       this._shaderSets[5].shaderProgram = this._shaderSets[2].shaderProgram;
       this._shaderSets[6].shaderProgram = this._shaderSets[3].shaderProgram;
       this._shaderSets[7].shaderProgram = this._shaderSets[1].shaderProgram;
       this._shaderSets[8].shaderProgram = this._shaderSets[2].shaderProgram;
       this._shaderSets[9].shaderProgram = this._shaderSets[3].shaderProgram;
-      this._shaderSets[0].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[0].shaderProgram, "a_position");
-      this._shaderSets[0].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[0].shaderProgram, "a_texCoord");
-      this._shaderSets[0].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[0].shaderProgram, "s_texture0");
-      this._shaderSets[0].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[0].shaderProgram, "u_clipMatrix");
-      this._shaderSets[0].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[0].shaderProgram, "u_channelFlag");
-      this._shaderSets[0].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[0].shaderProgram, "u_baseColor");
-      this._shaderSets[1].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[1].shaderProgram, "a_position");
-      this._shaderSets[1].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[1].shaderProgram, "a_texCoord");
-      this._shaderSets[1].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[1].shaderProgram, "s_texture0");
-      this._shaderSets[1].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[1].shaderProgram, "u_matrix");
-      this._shaderSets[1].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[1].shaderProgram, "u_baseColor");
-      this._shaderSets[2].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[2].shaderProgram, "a_position");
-      this._shaderSets[2].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[2].shaderProgram, "a_texCoord");
-      this._shaderSets[2].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[2].shaderProgram, "s_texture0");
-      this._shaderSets[2].samplerTexture1Location = this.gl.getUniformLocation(this._shaderSets[2].shaderProgram, "s_texture1");
-      this._shaderSets[2].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[2].shaderProgram, "u_matrix");
-      this._shaderSets[2].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[2].shaderProgram, "u_clipMatrix");
-      this._shaderSets[2].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[2].shaderProgram, "u_channelFlag");
-      this._shaderSets[2].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[2].shaderProgram, "u_baseColor");
-      this._shaderSets[3].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[3].shaderProgram, "a_position");
-      this._shaderSets[3].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[3].shaderProgram, "a_texCoord");
-      this._shaderSets[3].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[3].shaderProgram, "s_texture0");
-      this._shaderSets[3].samplerTexture1Location = this.gl.getUniformLocation(this._shaderSets[3].shaderProgram, "s_texture1");
-      this._shaderSets[3].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[3].shaderProgram, "u_matrix");
-      this._shaderSets[3].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[3].shaderProgram, "u_clipMatrix");
-      this._shaderSets[3].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[3].shaderProgram, "u_channelFlag");
-      this._shaderSets[3].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[3].shaderProgram, "u_baseColor");
-      this._shaderSets[4].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[4].shaderProgram, "a_position");
-      this._shaderSets[4].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[4].shaderProgram, "a_texCoord");
-      this._shaderSets[4].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[4].shaderProgram, "s_texture0");
-      this._shaderSets[4].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[4].shaderProgram, "u_matrix");
-      this._shaderSets[4].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[4].shaderProgram, "u_baseColor");
-      this._shaderSets[5].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[5].shaderProgram, "a_position");
-      this._shaderSets[5].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[5].shaderProgram, "a_texCoord");
-      this._shaderSets[5].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[5].shaderProgram, "s_texture0");
-      this._shaderSets[5].samplerTexture1Location = this.gl.getUniformLocation(this._shaderSets[5].shaderProgram, "s_texture1");
-      this._shaderSets[5].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[5].shaderProgram, "u_matrix");
-      this._shaderSets[5].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[5].shaderProgram, "u_clipMatrix");
-      this._shaderSets[5].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[5].shaderProgram, "u_channelFlag");
-      this._shaderSets[5].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[5].shaderProgram, "u_baseColor");
-      this._shaderSets[6].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[6].shaderProgram, "a_position");
-      this._shaderSets[6].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[6].shaderProgram, "a_texCoord");
-      this._shaderSets[6].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[6].shaderProgram, "s_texture0");
-      this._shaderSets[6].samplerTexture1Location = this.gl.getUniformLocation(this._shaderSets[6].shaderProgram, "s_texture1");
-      this._shaderSets[6].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[6].shaderProgram, "u_matrix");
-      this._shaderSets[6].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[6].shaderProgram, "u_clipMatrix");
-      this._shaderSets[6].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[6].shaderProgram, "u_channelFlag");
-      this._shaderSets[6].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[6].shaderProgram, "u_baseColor");
-      this._shaderSets[7].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[7].shaderProgram, "a_position");
-      this._shaderSets[7].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[7].shaderProgram, "a_texCoord");
-      this._shaderSets[7].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[7].shaderProgram, "s_texture0");
-      this._shaderSets[7].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[7].shaderProgram, "u_matrix");
-      this._shaderSets[7].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[7].shaderProgram, "u_baseColor");
-      this._shaderSets[8].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[8].shaderProgram, "a_position");
-      this._shaderSets[8].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[8].shaderProgram, "a_texCoord");
-      this._shaderSets[8].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[8].shaderProgram, "s_texture0");
-      this._shaderSets[8].samplerTexture1Location = this.gl.getUniformLocation(this._shaderSets[8].shaderProgram, "s_texture1");
-      this._shaderSets[8].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[8].shaderProgram, "u_matrix");
-      this._shaderSets[8].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[8].shaderProgram, "u_clipMatrix");
-      this._shaderSets[8].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[8].shaderProgram, "u_channelFlag");
-      this._shaderSets[8].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[8].shaderProgram, "u_baseColor");
-      this._shaderSets[9].attributePositionLocation = this.gl.getAttribLocation(this._shaderSets[9].shaderProgram, "a_position");
-      this._shaderSets[9].attributeTexCoordLocation = this.gl.getAttribLocation(this._shaderSets[9].shaderProgram, "a_texCoord");
-      this._shaderSets[9].samplerTexture0Location = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "s_texture0");
-      this._shaderSets[9].samplerTexture1Location = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "s_texture1");
-      this._shaderSets[9].uniformMatrixLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_matrix");
-      this._shaderSets[9].uniformClipMatrixLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_clipMatrix");
-      this._shaderSets[9].uniformChannelFlagLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_channelFlag");
-      this._shaderSets[9].uniformBaseColorLocation = this.gl.getUniformLocation(this._shaderSets[9].shaderProgram, "u_baseColor");
+      this._shaderSets[0].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[0].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[0].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[0].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[0].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[0].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[0].uniformClipMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[0].shaderProgram,
+        "u_clipMatrix"
+      );
+      this._shaderSets[0].uniformChannelFlagLocation = this.gl.getUniformLocation(
+        this._shaderSets[0].shaderProgram,
+        "u_channelFlag"
+      );
+      this._shaderSets[0].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[0].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[1].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[1].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[1].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[1].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[1].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[1].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[1].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[1].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[1].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[1].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[2].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[2].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[2].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[2].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[2].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[2].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[2].samplerTexture1Location = this.gl.getUniformLocation(
+        this._shaderSets[2].shaderProgram,
+        "s_texture1"
+      );
+      this._shaderSets[2].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[2].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[2].uniformClipMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[2].shaderProgram,
+        "u_clipMatrix"
+      );
+      this._shaderSets[2].uniformChannelFlagLocation = this.gl.getUniformLocation(
+        this._shaderSets[2].shaderProgram,
+        "u_channelFlag"
+      );
+      this._shaderSets[2].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[2].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[3].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[3].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[3].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[3].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[3].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[3].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[3].samplerTexture1Location = this.gl.getUniformLocation(
+        this._shaderSets[3].shaderProgram,
+        "s_texture1"
+      );
+      this._shaderSets[3].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[3].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[3].uniformClipMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[3].shaderProgram,
+        "u_clipMatrix"
+      );
+      this._shaderSets[3].uniformChannelFlagLocation = this.gl.getUniformLocation(
+        this._shaderSets[3].shaderProgram,
+        "u_channelFlag"
+      );
+      this._shaderSets[3].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[3].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[4].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[4].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[4].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[4].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[4].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[4].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[4].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[4].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[4].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[4].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[5].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[5].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[5].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[5].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[5].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[5].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[5].samplerTexture1Location = this.gl.getUniformLocation(
+        this._shaderSets[5].shaderProgram,
+        "s_texture1"
+      );
+      this._shaderSets[5].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[5].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[5].uniformClipMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[5].shaderProgram,
+        "u_clipMatrix"
+      );
+      this._shaderSets[5].uniformChannelFlagLocation = this.gl.getUniformLocation(
+        this._shaderSets[5].shaderProgram,
+        "u_channelFlag"
+      );
+      this._shaderSets[5].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[5].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[6].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[6].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[6].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[6].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[6].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[6].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[6].samplerTexture1Location = this.gl.getUniformLocation(
+        this._shaderSets[6].shaderProgram,
+        "s_texture1"
+      );
+      this._shaderSets[6].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[6].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[6].uniformClipMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[6].shaderProgram,
+        "u_clipMatrix"
+      );
+      this._shaderSets[6].uniformChannelFlagLocation = this.gl.getUniformLocation(
+        this._shaderSets[6].shaderProgram,
+        "u_channelFlag"
+      );
+      this._shaderSets[6].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[6].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[7].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[7].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[7].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[7].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[7].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[7].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[7].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[7].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[7].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[7].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[8].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[8].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[8].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[8].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[8].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[8].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[8].samplerTexture1Location = this.gl.getUniformLocation(
+        this._shaderSets[8].shaderProgram,
+        "s_texture1"
+      );
+      this._shaderSets[8].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[8].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[8].uniformClipMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[8].shaderProgram,
+        "u_clipMatrix"
+      );
+      this._shaderSets[8].uniformChannelFlagLocation = this.gl.getUniformLocation(
+        this._shaderSets[8].shaderProgram,
+        "u_channelFlag"
+      );
+      this._shaderSets[8].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[8].shaderProgram,
+        "u_baseColor"
+      );
+      this._shaderSets[9].attributePositionLocation = this.gl.getAttribLocation(
+        this._shaderSets[9].shaderProgram,
+        "a_position"
+      );
+      this._shaderSets[9].attributeTexCoordLocation = this.gl.getAttribLocation(
+        this._shaderSets[9].shaderProgram,
+        "a_texCoord"
+      );
+      this._shaderSets[9].samplerTexture0Location = this.gl.getUniformLocation(
+        this._shaderSets[9].shaderProgram,
+        "s_texture0"
+      );
+      this._shaderSets[9].samplerTexture1Location = this.gl.getUniformLocation(
+        this._shaderSets[9].shaderProgram,
+        "s_texture1"
+      );
+      this._shaderSets[9].uniformMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[9].shaderProgram,
+        "u_matrix"
+      );
+      this._shaderSets[9].uniformClipMatrixLocation = this.gl.getUniformLocation(
+        this._shaderSets[9].shaderProgram,
+        "u_clipMatrix"
+      );
+      this._shaderSets[9].uniformChannelFlagLocation = this.gl.getUniformLocation(
+        this._shaderSets[9].shaderProgram,
+        "u_channelFlag"
+      );
+      this._shaderSets[9].uniformBaseColorLocation = this.gl.getUniformLocation(
+        this._shaderSets[9].shaderProgram,
+        "u_baseColor"
+      );
     }
     loadShaderProgram(vertexShaderSource, fragmentShaderSource) {
       let shaderProgram = this.gl.createProgram();
-      let vertShader = this.compileShaderSource(this.gl.VERTEX_SHADER, vertexShaderSource);
+      let vertShader = this.compileShaderSource(
+        this.gl.VERTEX_SHADER,
+        vertexShaderSource
+      );
       if (!vertShader) {
         CubismLogError("Vertex shader compile error!");
         return 0;
       }
-      let fragShader = this.compileShaderSource(this.gl.FRAGMENT_SHADER, fragmentShaderSource);
+      let fragShader = this.compileShaderSource(
+        this.gl.FRAGMENT_SHADER,
+        fragmentShaderSource
+      );
       if (!fragShader) {
         CubismLogError("Vertex shader compile error!");
         return 0;
@@ -4706,7 +4710,10 @@ var __async = (__this, __arguments, generator) => {
       this.gl.attachShader(shaderProgram, vertShader);
       this.gl.attachShader(shaderProgram, fragShader);
       this.gl.linkProgram(shaderProgram);
-      const linkStatus = this.gl.getProgramParameter(shaderProgram, this.gl.LINK_STATUS);
+      const linkStatus = this.gl.getProgramParameter(
+        shaderProgram,
+        this.gl.LINK_STATUS
+      );
       if (!linkStatus) {
         CubismLogError("Failed to link program: {0}", shaderProgram);
         this.gl.deleteShader(vertShader);
@@ -4729,7 +4736,10 @@ var __async = (__this, __arguments, generator) => {
         const log = this.gl.getShaderInfoLog(shader);
         CubismLogError("Shader compile log: {0} ", log);
       }
-      const status = this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS);
+      const status = this.gl.getShaderParameter(
+        shader,
+        this.gl.COMPILE_STATUS
+      );
       if (!status) {
         this.gl.deleteShader(shader);
         return null;
@@ -4778,7 +4788,12 @@ var __async = (__this, __arguments, generator) => {
     initialize(model) {
       if (model.isUsingMasking()) {
         this._clippingManager = new CubismClippingManager_WebGL();
-        this._clippingManager.initialize(model, model.getDrawableCount(), model.getDrawableMasks(), model.getDrawableMaskCounts());
+        this._clippingManager.initialize(
+          model,
+          model.getDrawableCount(),
+          model.getDrawableMasks(),
+          model.getDrawableMaskCounts()
+        );
       }
       for (let i = model.getDrawableCount() - 1; i >= 0; i--) {
         this._sortedDrawableIndexList[i] = 0;
@@ -4795,19 +4810,24 @@ var __async = (__this, __arguments, generator) => {
       this._clippingManager.release();
       this._clippingManager = new CubismClippingManager_WebGL();
       this._clippingManager.setClippingMaskBufferSize(size);
-      this._clippingManager.initialize(this.getModel(), this.getModel().getDrawableCount(), this.getModel().getDrawableMasks(), this.getModel().getDrawableMaskCounts());
+      this._clippingManager.initialize(
+        this.getModel(),
+        this.getModel().getDrawableCount(),
+        this.getModel().getDrawableMasks(),
+        this.getModel().getDrawableMaskCounts()
+      );
     }
     getClippingMaskBufferSize() {
       return this._clippingManager.getClippingMaskBufferSize();
     }
     release() {
-      var _a, _b, _c;
+      var _a2, _b2, _c;
       const self2 = this;
       this._clippingManager.release();
       self2._clippingManager = void 0;
-      (_a = this.gl) == null ? void 0 : _a.deleteBuffer(this._bufferData.vertex);
+      (_a2 = this.gl) == null ? void 0 : _a2.deleteBuffer(this._bufferData.vertex);
       this._bufferData.vertex = null;
-      (_b = this.gl) == null ? void 0 : _b.deleteBuffer(this._bufferData.uv);
+      (_b2 = this.gl) == null ? void 0 : _b2.deleteBuffer(this._bufferData.uv);
       this._bufferData.uv = null;
       (_c = this.gl) == null ? void 0 : _c.deleteBuffer(this._bufferData.index);
       this._bufferData.index = null;
@@ -4830,9 +4850,21 @@ var __async = (__this, __arguments, generator) => {
         if (!this.getModel().getDrawableDynamicFlagIsVisible(drawableIndex)) {
           continue;
         }
-        this.setClippingContextBufferForDraw(this._clippingManager != null ? this._clippingManager.getClippingContextListForDraw()[drawableIndex] : null);
+        this.setClippingContextBufferForDraw(
+          this._clippingManager != null ? this._clippingManager.getClippingContextListForDraw()[drawableIndex] : null
+        );
         this.setIsCulling(this.getModel().getDrawableCulling(drawableIndex));
-        this.drawMesh(this.getModel().getDrawableTextureIndices(drawableIndex), this.getModel().getDrawableVertexIndexCount(drawableIndex), this.getModel().getDrawableVertexCount(drawableIndex), this.getModel().getDrawableVertexIndices(drawableIndex), this.getModel().getDrawableVertices(drawableIndex), this.getModel().getDrawableVertexUvs(drawableIndex), this.getModel().getDrawableOpacity(drawableIndex), this.getModel().getDrawableBlendMode(drawableIndex), this.getModel().getDrawableInvertedMaskBit(drawableIndex));
+        this.drawMesh(
+          this.getModel().getDrawableTextureIndices(drawableIndex),
+          this.getModel().getDrawableVertexIndexCount(drawableIndex),
+          this.getModel().getDrawableVertexCount(drawableIndex),
+          this.getModel().getDrawableVertexIndices(drawableIndex),
+          this.getModel().getDrawableVertices(drawableIndex),
+          this.getModel().getDrawableVertexUvs(drawableIndex),
+          this.getModel().getDrawableOpacity(drawableIndex),
+          this.getModel().getDrawableBlendMode(drawableIndex),
+          this.getModel().getDrawableInvertedMaskBit(drawableIndex)
+        );
       }
     }
     drawMesh(textureNo, indexCount, vertexCount, indexArray, vertexArray, uvArray, opacity, colorBlendMode, invertedMask) {
@@ -4855,8 +4887,27 @@ var __async = (__this, __arguments, generator) => {
       if (this._textures[textureNo] != null) {
         drawtexture = this._textures[textureNo];
       }
-      CubismShader_WebGL.getInstance().setupShaderProgram(this, drawtexture, vertexCount, vertexArray, indexArray, uvArray, this._bufferData, opacity, colorBlendMode, modelColorRGBA, this.isPremultipliedAlpha(), this.getMvpMatrix(), invertedMask);
-      this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_SHORT, 0);
+      CubismShader_WebGL.getInstance().setupShaderProgram(
+        this,
+        drawtexture,
+        vertexCount,
+        vertexArray,
+        indexArray,
+        uvArray,
+        this._bufferData,
+        opacity,
+        colorBlendMode,
+        modelColorRGBA,
+        this.isPremultipliedAlpha(),
+        this.getMvpMatrix(),
+        invertedMask
+      );
+      this.gl.drawElements(
+        this.gl.TRIANGLES,
+        indexCount,
+        this.gl.UNSIGNED_SHORT,
+        0
+      );
       this.gl.useProgram(null);
       this.setClippingContextBufferForDraw(null);
       this.setClippingContextBufferForMask(null);
@@ -4926,9 +4977,9 @@ var __async = (__this, __arguments, generator) => {
       this.init();
     }
     init() {
-      var _a;
+      var _a2;
       super.init();
-      if (((_a = this.settings.getEyeBlinkParameters()) == null ? void 0 : _a.length) > 0) {
+      if (((_a2 = this.settings.getEyeBlinkParameters()) == null ? void 0 : _a2.length) > 0) {
         this.eyeBlink = CubismEyeBlink.create(this.settings);
       }
       this.breath.setParameters([
@@ -4975,12 +5026,12 @@ var __async = (__this, __arguments, generator) => {
       this.renderer.bindTexture(index, texture);
     }
     getHitAreaDefs() {
-      var _a, _b;
-      return (_b = (_a = this.settings.hitAreas) == null ? void 0 : _a.map((hitArea) => ({
+      var _a2, _b2;
+      return (_b2 = (_a2 = this.settings.hitAreas) == null ? void 0 : _a2.map((hitArea) => ({
         id: hitArea.Id,
         name: hitArea.Name,
         index: this.coreModel.getDrawableIndex(hitArea.Id)
-      }))) != null ? _b : [];
+      }))) != null ? _b2 : [];
     }
     getDrawableIDs() {
       return this.coreModel.getDrawableIds();
@@ -5005,7 +5056,7 @@ var __async = (__this, __arguments, generator) => {
       this.drawingMatrix.copyFrom(this.centeringTransform).prepend(this.localTransform).prepend(transform);
     }
     update(dt, now) {
-      var _a, _b, _c, _d;
+      var _a2, _b2, _c, _d;
       super.update(dt, now);
       dt /= 1e3;
       now /= 1e3;
@@ -5014,13 +5065,13 @@ var __async = (__this, __arguments, generator) => {
       const motionUpdated = this.motionManager.update(this.coreModel, now);
       this.emit("afterMotionUpdate");
       model.saveParameters();
-      (_a = this.motionManager.expressionManager) == null ? void 0 : _a.update(model, now);
+      (_a2 = this.motionManager.expressionManager) == null ? void 0 : _a2.update(model, now);
       if (!motionUpdated) {
-        (_b = this.eyeBlink) == null ? void 0 : _b.updateParameters(model, dt);
+        (_b2 = this.eyeBlink) == null ? void 0 : _b2.updateParameters(model, dt);
       }
       this.updateFocus();
       this.updateNaturalMovements(dt * 1e3, now * 1e3);
-      if (this.lipSync && this.motionManager.currentAudio) {
+      if (this.lipSync && this.motionManager.playingSound) {
         let value = this.motionManager.mouthSync();
         let min_ = 0;
         let max_ = 1;
@@ -5051,8 +5102,8 @@ var __async = (__this, __arguments, generator) => {
       this.coreModel.addParameterValueById(this.idParamMouthForm, mouthForm);
     }
     updateNaturalMovements(dt, now) {
-      var _a;
-      (_a = this.breath) == null ? void 0 : _a.updateParameters(this.coreModel, dt / 1e3);
+      var _a2;
+      (_a2 = this.breath) == null ? void 0 : _a2.updateParameters(this.coreModel, dt / 1e3);
     }
     draw(gl) {
       const matrix = this.drawingMatrix;
@@ -5175,7 +5226,10 @@ var __async = (__this, __arguments, generator) => {
             continue;
           }
           model.setPartOpacityByIndex(partsIndex, j == beginIndex ? 1 : 0);
-          model.setParameterValueByIndex(paramIndex, j == beginIndex ? 1 : 0);
+          model.setParameterValueByIndex(
+            paramIndex,
+            j == beginIndex ? 1 : 0
+          );
           for (let k = 0; k < this._partGroups[j].link.length; ++k) {
             this._partGroups[j].link[k].initialize(model);
           }
@@ -5422,7 +5476,10 @@ var __async = (__this, __arguments, generator) => {
       this.setParameterValueByIndex(index, value, weight);
     }
     addParameterValueByIndex(parameterIndex, value, weight = 1) {
-      this.setParameterValueByIndex(parameterIndex, this.getParameterValueByIndex(parameterIndex) + value * weight);
+      this.setParameterValueByIndex(
+        parameterIndex,
+        this.getParameterValueByIndex(parameterIndex) + value * weight
+      );
     }
     addParameterValueById(parameterId, value, weight = 1) {
       const index = this.getParameterIndex(parameterId);
@@ -5433,7 +5490,10 @@ var __async = (__this, __arguments, generator) => {
       this.multiplyParameterValueByIndex(index, value, weight);
     }
     multiplyParameterValueByIndex(parameterIndex, value, weight = 1) {
-      this.setParameterValueByIndex(parameterIndex, this.getParameterValueByIndex(parameterIndex) * (1 + (value - 1) * weight));
+      this.setParameterValueByIndex(
+        parameterIndex,
+        this.getParameterValueByIndex(parameterIndex) * (1 + (value - 1) * weight)
+      );
     }
     getDrawableIds() {
       return this._drawableIds.slice();
@@ -5461,7 +5521,9 @@ var __async = (__this, __arguments, generator) => {
     }
     getDrawableDynamicFlagVertexPositionsDidChange(drawableIndex) {
       const dynamicFlags = this._model.drawables.dynamicFlags;
-      return Live2DCubismCore.Utils.hasVertexPositionsDidChangeBit(dynamicFlags[drawableIndex]);
+      return Live2DCubismCore.Utils.hasVertexPositionsDidChangeBit(
+        dynamicFlags[drawableIndex]
+      );
     }
     getDrawableVertexIndexCount(drawableIndex) {
       return this._model.drawables.indexCounts[drawableIndex];
@@ -5486,15 +5548,23 @@ var __async = (__this, __arguments, generator) => {
     }
     getDrawableCulling(drawableIndex) {
       const constantFlags = this._model.drawables.constantFlags;
-      return !Live2DCubismCore.Utils.hasIsDoubleSidedBit(constantFlags[drawableIndex]);
+      return !Live2DCubismCore.Utils.hasIsDoubleSidedBit(
+        constantFlags[drawableIndex]
+      );
     }
     getDrawableBlendMode(drawableIndex) {
       const constantFlags = this._model.drawables.constantFlags;
-      return Live2DCubismCore.Utils.hasBlendAdditiveBit(constantFlags[drawableIndex]) ? CubismBlendMode.CubismBlendMode_Additive : Live2DCubismCore.Utils.hasBlendMultiplicativeBit(constantFlags[drawableIndex]) ? CubismBlendMode.CubismBlendMode_Multiplicative : CubismBlendMode.CubismBlendMode_Normal;
+      return Live2DCubismCore.Utils.hasBlendAdditiveBit(
+        constantFlags[drawableIndex]
+      ) ? CubismBlendMode.CubismBlendMode_Additive : Live2DCubismCore.Utils.hasBlendMultiplicativeBit(
+        constantFlags[drawableIndex]
+      ) ? CubismBlendMode.CubismBlendMode_Multiplicative : CubismBlendMode.CubismBlendMode_Normal;
     }
     getDrawableInvertedMaskBit(drawableIndex) {
       const constantFlags = this._model.drawables.constantFlags;
-      return Live2DCubismCore.Utils.hasIsInvertedMaskBit(constantFlags[drawableIndex]);
+      return Live2DCubismCore.Utils.hasIsInvertedMaskBit(
+        constantFlags[drawableIndex]
+      );
     }
     getDrawableMasks() {
       return this._model.drawables.masks;
@@ -5513,19 +5583,27 @@ var __async = (__this, __arguments, generator) => {
     }
     getDrawableDynamicFlagIsVisible(drawableIndex) {
       const dynamicFlags = this._model.drawables.dynamicFlags;
-      return Live2DCubismCore.Utils.hasIsVisibleBit(dynamicFlags[drawableIndex]);
+      return Live2DCubismCore.Utils.hasIsVisibleBit(
+        dynamicFlags[drawableIndex]
+      );
     }
     getDrawableDynamicFlagVisibilityDidChange(drawableIndex) {
       const dynamicFlags = this._model.drawables.dynamicFlags;
-      return Live2DCubismCore.Utils.hasVisibilityDidChangeBit(dynamicFlags[drawableIndex]);
+      return Live2DCubismCore.Utils.hasVisibilityDidChangeBit(
+        dynamicFlags[drawableIndex]
+      );
     }
     getDrawableDynamicFlagOpacityDidChange(drawableIndex) {
       const dynamicFlags = this._model.drawables.dynamicFlags;
-      return Live2DCubismCore.Utils.hasOpacityDidChangeBit(dynamicFlags[drawableIndex]);
+      return Live2DCubismCore.Utils.hasOpacityDidChangeBit(
+        dynamicFlags[drawableIndex]
+      );
     }
     getDrawableDynamicFlagRenderOrderDidChange(drawableIndex) {
       const dynamicFlags = this._model.drawables.dynamicFlags;
-      return Live2DCubismCore.Utils.hasRenderOrderDidChangeBit(dynamicFlags[drawableIndex]);
+      return Live2DCubismCore.Utils.hasRenderOrderDidChangeBit(
+        dynamicFlags[drawableIndex]
+      );
     }
     loadParameters() {
       let parameterCount = this._model.parameters.count;
@@ -5809,29 +5887,69 @@ var __async = (__this, __arguments, generator) => {
         for (let i = 0; i < currentSetting.inputCount; ++i) {
           weight = currentInput[i].weight / MaximumWeight;
           if (currentInput[i].sourceParameterIndex == -1) {
-            currentInput[i].sourceParameterIndex = model.getParameterIndex(currentInput[i].source.id);
+            currentInput[i].sourceParameterIndex = model.getParameterIndex(
+              currentInput[i].source.id
+            );
           }
-          currentInput[i].getNormalizedParameterValue(totalTranslation, totalAngle, parameterValue[currentInput[i].sourceParameterIndex], parameterMinimumValue[currentInput[i].sourceParameterIndex], parameterMaximumValue[currentInput[i].sourceParameterIndex], parameterDefaultValue[currentInput[i].sourceParameterIndex], currentSetting.normalizationPosition, currentSetting.normalizationAngle, currentInput[i].reflect, weight);
+          currentInput[i].getNormalizedParameterValue(
+            totalTranslation,
+            totalAngle,
+            parameterValue[currentInput[i].sourceParameterIndex],
+            parameterMinimumValue[currentInput[i].sourceParameterIndex],
+            parameterMaximumValue[currentInput[i].sourceParameterIndex],
+            parameterDefaultValue[currentInput[i].sourceParameterIndex],
+            currentSetting.normalizationPosition,
+            currentSetting.normalizationAngle,
+            currentInput[i].reflect,
+            weight
+          );
         }
         radAngle = CubismMath.degreesToRadian(-totalAngle.angle);
         totalTranslation.x = totalTranslation.x * CubismMath.cos(radAngle) - totalTranslation.y * CubismMath.sin(radAngle);
         totalTranslation.y = totalTranslation.x * CubismMath.sin(radAngle) + totalTranslation.y * CubismMath.cos(radAngle);
-        updateParticles(currentParticles, currentSetting.particleCount, totalTranslation, totalAngle.angle, this._options.wind, MovementThreshold * currentSetting.normalizationPosition.maximum, deltaTimeSeconds, AirResistance);
+        updateParticles(
+          currentParticles,
+          currentSetting.particleCount,
+          totalTranslation,
+          totalAngle.angle,
+          this._options.wind,
+          MovementThreshold * currentSetting.normalizationPosition.maximum,
+          deltaTimeSeconds,
+          AirResistance
+        );
         for (let i = 0; i < currentSetting.outputCount; ++i) {
           const particleIndex = currentOutput[i].vertexIndex;
           if (particleIndex < 1 || particleIndex >= currentSetting.particleCount) {
             break;
           }
           if (currentOutput[i].destinationParameterIndex == -1) {
-            currentOutput[i].destinationParameterIndex = model.getParameterIndex(currentOutput[i].destination.id);
+            currentOutput[i].destinationParameterIndex = model.getParameterIndex(
+              currentOutput[i].destination.id
+            );
           }
           const translation = new CubismVector2();
           translation.x = currentParticles[particleIndex].position.x - currentParticles[particleIndex - 1].position.x;
           translation.y = currentParticles[particleIndex].position.y - currentParticles[particleIndex - 1].position.y;
-          outputValue = currentOutput[i].getValue(translation, currentParticles, particleIndex, currentOutput[i].reflect, this._options.gravity);
+          outputValue = currentOutput[i].getValue(
+            translation,
+            currentParticles,
+            particleIndex,
+            currentOutput[i].reflect,
+            this._options.gravity
+          );
           const destinationParameterIndex = currentOutput[i].destinationParameterIndex;
-          const outParameterValue = !Float32Array.prototype.slice && "subarray" in Float32Array.prototype ? JSON.parse(JSON.stringify(parameterValue.subarray(destinationParameterIndex))) : parameterValue.slice(destinationParameterIndex);
-          updateOutputParameterValue(outParameterValue, parameterMinimumValue[destinationParameterIndex], parameterMaximumValue[destinationParameterIndex], outputValue, currentOutput[i]);
+          const outParameterValue = !Float32Array.prototype.slice && "subarray" in Float32Array.prototype ? JSON.parse(
+            JSON.stringify(
+              parameterValue.subarray(destinationParameterIndex)
+            )
+          ) : parameterValue.slice(destinationParameterIndex);
+          updateOutputParameterValue(
+            outParameterValue,
+            parameterMinimumValue[destinationParameterIndex],
+            parameterMaximumValue[destinationParameterIndex],
+            outputValue,
+            currentOutput[i]
+          );
           for (let offset = destinationParameterIndex, outParamIndex = 0; offset < parameterValue.length; offset++, outParamIndex++) {
             parameterValue[offset] = outParameterValue[outParamIndex];
           }
@@ -5951,7 +6069,10 @@ var __async = (__this, __arguments, generator) => {
         currentSetting = this._physicsRig.settings[settingIndex];
         strand = this._physicsRig.particles.slice(currentSetting.baseParticleIndex);
         strand[0].initialPosition = new CubismVector2(0, 0);
-        strand[0].lastPosition = new CubismVector2(strand[0].initialPosition.x, strand[0].initialPosition.y);
+        strand[0].lastPosition = new CubismVector2(
+          strand[0].initialPosition.x,
+          strand[0].initialPosition.y
+        );
         strand[0].lastGravity = new CubismVector2(0, -1);
         strand[0].lastGravity.y *= -1;
         strand[0].velocity = new CubismVector2(0, 0);
@@ -5959,9 +6080,18 @@ var __async = (__this, __arguments, generator) => {
         for (let i = 1; i < currentSetting.particleCount; ++i) {
           radius = new CubismVector2(0, 0);
           radius.y = strand[i].radius;
-          strand[i].initialPosition = new CubismVector2(strand[i - 1].initialPosition.x + radius.x, strand[i - 1].initialPosition.y + radius.y);
-          strand[i].position = new CubismVector2(strand[i].initialPosition.x, strand[i].initialPosition.y);
-          strand[i].lastPosition = new CubismVector2(strand[i].initialPosition.x, strand[i].initialPosition.y);
+          strand[i].initialPosition = new CubismVector2(
+            strand[i - 1].initialPosition.x + radius.x,
+            strand[i - 1].initialPosition.y + radius.y
+          );
+          strand[i].position = new CubismVector2(
+            strand[i].initialPosition.x,
+            strand[i].initialPosition.y
+          );
+          strand[i].lastPosition = new CubismVector2(
+            strand[i].initialPosition.x,
+            strand[i].initialPosition.y
+          );
           strand[i].lastGravity = new CubismVector2(0, -1);
           strand[i].lastGravity.y *= -1;
           strand[i].velocity = new CubismVector2(0, 0);
@@ -5977,13 +6107,40 @@ var __async = (__this, __arguments, generator) => {
     }
   }
   function getInputTranslationXFromNormalizedParameterValue(targetTranslation, targetAngle, value, parameterMinimumValue, parameterMaximumValue, parameterDefaultValue, normalizationPosition, normalizationAngle, isInverted, weight) {
-    targetTranslation.x += normalizeParameterValue(value, parameterMinimumValue, parameterMaximumValue, parameterDefaultValue, normalizationPosition.minimum, normalizationPosition.maximum, normalizationPosition.defalut, isInverted) * weight;
+    targetTranslation.x += normalizeParameterValue(
+      value,
+      parameterMinimumValue,
+      parameterMaximumValue,
+      parameterDefaultValue,
+      normalizationPosition.minimum,
+      normalizationPosition.maximum,
+      normalizationPosition.defalut,
+      isInverted
+    ) * weight;
   }
   function getInputTranslationYFromNormalizedParamterValue(targetTranslation, targetAngle, value, parameterMinimumValue, parameterMaximumValue, parameterDefaultValue, normalizationPosition, normalizationAngle, isInverted, weight) {
-    targetTranslation.y += normalizeParameterValue(value, parameterMinimumValue, parameterMaximumValue, parameterDefaultValue, normalizationPosition.minimum, normalizationPosition.maximum, normalizationPosition.defalut, isInverted) * weight;
+    targetTranslation.y += normalizeParameterValue(
+      value,
+      parameterMinimumValue,
+      parameterMaximumValue,
+      parameterDefaultValue,
+      normalizationPosition.minimum,
+      normalizationPosition.maximum,
+      normalizationPosition.defalut,
+      isInverted
+    ) * weight;
   }
   function getInputAngleFromNormalizedParameterValue(targetTranslation, targetAngle, value, parameterMinimumValue, parameterMaximumValue, parameterDefaultValue, normalizaitionPosition, normalizationAngle, isInverted, weight) {
-    targetAngle.angle += normalizeParameterValue(value, parameterMinimumValue, parameterMaximumValue, parameterDefaultValue, normalizationAngle.minimum, normalizationAngle.maximum, normalizationAngle.defalut, isInverted) * weight;
+    targetAngle.angle += normalizeParameterValue(
+      value,
+      parameterMinimumValue,
+      parameterMaximumValue,
+      parameterDefaultValue,
+      normalizationAngle.minimum,
+      normalizationAngle.maximum,
+      normalizationAngle.defalut,
+      isInverted
+    ) * weight;
   }
   function getOutputTranslationX(translation, particles, particleIndex, isInverted, parentGravity) {
     let outputValue = translation.x;
@@ -6002,7 +6159,9 @@ var __async = (__this, __arguments, generator) => {
   function getOutputAngle(translation, particles, particleIndex, isInverted, parentGravity) {
     let outputValue;
     if (particleIndex >= 2) {
-      parentGravity = particles[particleIndex - 1].position.substract(particles[particleIndex - 2].position);
+      parentGravity = particles[particleIndex - 1].position.substract(
+        particles[particleIndex - 2].position
+      );
     } else {
       parentGravity = parentGravity.multiplyByScaler(-1);
     }
@@ -6037,13 +6196,19 @@ var __async = (__this, __arguments, generator) => {
     let velocity = new CubismVector2(0, 0);
     let force = new CubismVector2(0, 0);
     let newDirection = new CubismVector2(0, 0);
-    strand[0].position = new CubismVector2(totalTranslation.x, totalTranslation.y);
+    strand[0].position = new CubismVector2(
+      totalTranslation.x,
+      totalTranslation.y
+    );
     totalRadian = CubismMath.degreesToRadian(totalAngle);
     currentGravity = CubismMath.radianToDirection(totalRadian);
     currentGravity.normalize();
     for (let i = 1; i < strandCount; ++i) {
       strand[i].force = currentGravity.multiplyByScaler(strand[i].acceleration).add(windDirection);
-      strand[i].lastPosition = new CubismVector2(strand[i].position.x, strand[i].position.y);
+      strand[i].lastPosition = new CubismVector2(
+        strand[i].position.x,
+        strand[i].position.y
+      );
       delay = strand[i].delay * deltaTimeSeconds * 30;
       direction = strand[i].position.substract(strand[i - 1].position);
       radian = CubismMath.directionToRadian(strand[i].lastGravity, currentGravity) / airResistance;
@@ -6055,17 +6220,26 @@ var __async = (__this, __arguments, generator) => {
       strand[i].position = strand[i].position.add(velocity).add(force);
       newDirection = strand[i].position.substract(strand[i - 1].position);
       newDirection.normalize();
-      strand[i].position = strand[i - 1].position.add(newDirection.multiplyByScaler(strand[i].radius));
+      strand[i].position = strand[i - 1].position.add(
+        newDirection.multiplyByScaler(strand[i].radius)
+      );
       if (CubismMath.abs(strand[i].position.x) < thresholdValue) {
         strand[i].position.x = 0;
       }
       if (delay != 0) {
-        strand[i].velocity = strand[i].position.substract(strand[i].lastPosition);
+        strand[i].velocity = strand[i].position.substract(
+          strand[i].lastPosition
+        );
         strand[i].velocity = strand[i].velocity.divisionByScalar(delay);
-        strand[i].velocity = strand[i].velocity.multiplyByScaler(strand[i].mobility);
+        strand[i].velocity = strand[i].velocity.multiplyByScaler(
+          strand[i].mobility
+        );
       }
       strand[i].force = new CubismVector2(0, 0);
-      strand[i].lastGravity = new CubismVector2(currentGravity.x, currentGravity.y);
+      strand[i].lastGravity = new CubismVector2(
+        currentGravity.x,
+        currentGravity.y
+      );
     }
   }
   function updateOutputParameterValue(parameterValue, parameterValueMinimum, parameterValueMaximum, translation, output) {
@@ -6103,8 +6277,14 @@ var __async = (__this, __arguments, generator) => {
     if (minValue > value) {
       value = minValue;
     }
-    const minNormValue = CubismMath.min(normalizedMinimum, normalizedMaximum);
-    const maxNormValue = CubismMath.max(normalizedMinimum, normalizedMaximum);
+    const minNormValue = CubismMath.min(
+      normalizedMinimum,
+      normalizedMaximum
+    );
+    const maxNormValue = CubismMath.max(
+      normalizedMinimum,
+      normalizedMaximum
+    );
     const middleNormValue = normalizedDefault;
     const middleValue = getDefaultValue(minValue, maxValue);
     const paramValue = value - middleValue;
@@ -6134,7 +6314,7 @@ var __async = (__this, __arguments, generator) => {
     }
     return isInverted ? result : result * -1;
   }
-  Live2DFactory.registerRuntime({
+  RuntimeManager.registerRuntime({
     version: 4,
     ready: cubism4Ready,
     test(source) {
@@ -6164,8 +6344,8 @@ var __async = (__this, __arguments, generator) => {
         throw e;
       }
     },
-    createInternalModel(coreModel, settings, options) {
-      const model = new Cubism4InternalModel(coreModel, settings, options);
+    createInternalModel(coreModel, settings) {
+      const model = new Cubism4InternalModel(coreModel, settings);
       const coreModelWithMoc = coreModel;
       if (coreModelWithMoc.__moc) {
         model.__moc = coreModelWithMoc.__moc;
@@ -6182,8 +6362,8 @@ var __async = (__this, __arguments, generator) => {
     }
   });
   function releaseMoc() {
-    var _a;
-    (_a = this.__moc) == null ? void 0 : _a.release();
+    var _a2;
+    (_a2 = this.__moc) == null ? void 0 : _a2.release();
   }
   exports2.Cubism2ExpressionManager = Cubism2ExpressionManager;
   exports2.Cubism2InternalModel = Cubism2InternalModel;
@@ -6194,7 +6374,6 @@ var __async = (__this, __arguments, generator) => {
   exports2.Cubism4ModelSettings = Cubism4ModelSettings;
   exports2.Cubism4MotionManager = Cubism4MotionManager;
   exports2.ExpressionManager = ExpressionManager;
-  exports2.FileLoader = FileLoader;
   exports2.FocusController = FocusController;
   exports2.InteractionMixin = InteractionMixin;
   exports2.InternalModel = InternalModel;
@@ -6202,8 +6381,6 @@ var __async = (__this, __arguments, generator) => {
   exports2.LOGICAL_WIDTH = LOGICAL_WIDTH;
   exports2.Live2DExpression = Live2DExpression;
   exports2.Live2DEyeBlink = Live2DEyeBlink;
-  exports2.Live2DFactory = Live2DFactory;
-  exports2.Live2DLoader = Live2DLoader;
   exports2.Live2DModel = Live2DModel;
   exports2.Live2DPhysics = Live2DPhysics;
   exports2.Live2DPose = Live2DPose;
@@ -6213,16 +6390,12 @@ var __async = (__this, __arguments, generator) => {
   exports2.MotionPreloadStrategy = MotionPreloadStrategy;
   exports2.MotionPriority = MotionPriority;
   exports2.MotionState = MotionState;
-  exports2.SoundManager = SoundManager;
   exports2.VERSION = VERSION;
-  exports2.XHRLoader = XHRLoader;
-  exports2.ZipLoader = ZipLoader;
   exports2.applyMixins = applyMixins;
   exports2.clamp = clamp;
   exports2.copyArray = copyArray;
   exports2.copyProperty = copyProperty;
   exports2.cubism4Ready = cubism4Ready;
-  exports2.folderName = folderName;
   exports2.logger = logger;
   exports2.rand = rand;
   exports2.remove = remove;

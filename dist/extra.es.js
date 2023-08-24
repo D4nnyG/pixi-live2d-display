@@ -11,7 +11,7 @@ class HitAreaFrames extends Graphics {
     this.strokeWidth = 4;
     this.normalColor = 14883354;
     this.activeColor = 2017330;
-    this.interactive = true;
+    this.eventMode = "static";
     this.on("added", this.init).on("pointermove", this.onPointerMove);
   }
   init() {
@@ -30,7 +30,7 @@ class HitAreaFrames extends Graphics {
     });
   }
   onPointerMove(e) {
-    const hitAreaNames = this.parent.hitTest(e.data.global.x, e.data.global.y);
+    const hitAreaNames = this.parent.hitTest(e.globalX, e.globalY);
     this.texts.forEach((text) => {
       text.visible = hitAreaNames.includes(text.text);
     });

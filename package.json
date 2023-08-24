@@ -52,15 +52,15 @@
   ],
   "types": "types/index.d.ts",
   "peerDependencies": {
-    "@pixi/core": "^7.3.0-rc.2",
-    "@pixi/assets": "^7.3.0-rc.2",
-    "@pixi/display": "^7.3.0-rc.2",
-    "@pixi/math": "^7.3.0-rc.2",
-    "@pixi/sprite": "^7.3.0-rc.2",
-    "@pixi/utils": "^7.3.0-rc.2",
-    "@pixi/events": "^7.3.0-rc.2",
-    "@pixi/text": "^7.3.0-rc.2",
-    "@pixi/graphics": "^7.3.0-rc.2",
+    "@pixi/core": "^7",
+    "@pixi/assets": "^7",
+    "@pixi/display": "^7",
+    "@pixi/math": "^7",
+    "@pixi/sprite": "^7",
+    "@pixi/utils": "^7",
+    "@pixi/events": "^7",
+    "@pixi/text": "^7",
+    "@pixi/graphics": "^7",
     "@pixi/sound": "^5"
   },
   "devDependencies": {
@@ -81,7 +81,7 @@
     "jszip": "^3.10.0",
     "lodash-es": "^4.17.21",
     "node-fetch": "^2",
-    "pixi.js": "^7.3.0-rc.2",
+    "pixi.js": "^7",
     "rimraf": "^3.0.2",
     "sinon": "^14.0.0",
     "sinon-chai": "^3.7.0",
@@ -93,11 +93,11 @@
     
     "gh-pages": "^4.0.0"
   },
-  "overrides": {
-    "@pixi/sound":{
-      "@pixi/core": "^7.3.0-rc.2",
-      "@pixi/assets":"^7.3.0-rc.2"
-    }
-  },
+  // "overrides": {
+  //   "@pixi/sound":{
+  //     "@pixi/core": "^7",
+  //     "@pixi/assets":"^7"
+  //   }
+  // },
   "packageManager": "yarn@1.22.19"
 }

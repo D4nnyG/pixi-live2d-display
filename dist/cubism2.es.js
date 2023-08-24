@@ -19,10 +19,11 @@ var __async = (__this, __arguments, generator) => {
     step((generator = generator.apply(__this, __arguments)).next());
   });
 };
-import { EventEmitter, url } from "@pixi/utils";
+import { EventEmitter, path, url } from "@pixi/utils";
 import { Matrix, Transform, Point, ObservablePoint } from "@pixi/math";
-import { Texture } from "@pixi/core";
+import { ExtensionType, extensions } from "@pixi/core";
 import { Container } from "@pixi/display";
+import { LoaderParserPriority, loadTextures } from "@pixi/assets";
 const LOGICAL_WIDTH = 2;
 const LOGICAL_HEIGHT = 2;
 var CubismConfig;
@@ -90,17 +91,6 @@ function applyMixins(derivedCtor, baseCtors) {
     });
   });
 }
-function folderName(url2) {
-  let lastSlashIndex = url2.lastIndexOf("/");
-  if (lastSlashIndex != -1) {
-    url2 = url2.slice(0, lastSlashIndex);
-  }
-  lastSlashIndex = url2.lastIndexOf("/");
-  if (lastSlashIndex !== -1) {
-    url2 = url2.slice(lastSlashIndex + 1);
-  }
-  return url2;
-}
 function remove(array, item) {
   const index = array.indexOf(item);
   if (index !== -1) {
@@ -128,15 +118,13 @@ class ExpressionManager extends EventEmitter {
         return void 0;
       }
       if (this.expressions[index] === null) {
-        logger.warn(this.tag, `Cannot set expression at [${index}] because it's already failed in loading.`);
+        logger.warn(this.tag, `Expression at [${index}] failed to load.`);
         return void 0;
       }
       if (this.expressions[index]) {
         return this.expressions[index];
       }
-      const expression = yield this._loadExpression(index);
-      this.expressions[index] = expression;
-      return expression;
+      return void 0;
     });
   }
   _loadExpression(index) {
@@ -256,10 +244,10 @@ class ModelSettings {
       throw new TypeError("The `url` field in settings JSON must be defined as a string.");
     }
     this.url = url2;
-    this.name = folderName(this.url);
+    this.name = path.dirname(this.url);
   }
-  resolveURL(path) {
-    return url.resolve(this.url, path);
+  resolveURL(path2) {
+    return url.resolve(this.url, path2);
   }
   replaceFiles(replacer) {
     this.moc = replacer(this.moc, "moc");
@@ -419,96 +407,6 @@ class MotionState {
     return "";
   }
 }
-const TAG$2 = "SoundManager";
-const VOLUME = 0.9;
-class SoundManager {
-  static get volume() {
-    return this._volume;
-  }
-  static set volume(value) {
-    this._volume = (value > 1 ? 1 : value < 0 ? 0 : value) || 0;
-    this.audios.forEach((audio) => audio.volume = this._volume);
-  }
-  static add(file, onFinish, onError) {
-    const audio = new Audio(file);
-    audio.volume = this._volume;
-    audio.preload = "auto";
-    audio.autoplay = true;
-    audio.crossOrigin = "anonymous";
-    audio.addEventListener("ended", () => {
-      this.dispose(audio);
-      onFinish == null ? void 0 : onFinish();
-    });
-    audio.addEventListener("error", (e) => {
-      this.dispose(audio);
-      logger.warn(TAG$2, `Error occurred on "${file}"`, e.error);
-      onError == null ? void 0 : onError(e.error);
-    });
-    this.audios.push(audio);
-    return audio;
-  }
-  static play(audio) {
-    return new Promise((resolve, reject) => {
-      var _a;
-      (_a = audio.play()) == null ? void 0 : _a.catch((e) => {
-        audio.dispatchEvent(new ErrorEvent("error", { error: e }));
-        reject(e);
-      });
-      if (audio.readyState === audio.HAVE_ENOUGH_DATA) {
-        resolve();
-      } else {
-        audio.addEventListener("canplaythrough", resolve);
-      }
-    });
-  }
-  static addContext(audio) {
-    const context = new AudioContext();
-    this.contexts.push(context);
-    return context;
-  }
-  static addAnalyzer(audio, context) {
-    const source = context.createMediaElementSource(audio);
-    const analyser = context.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.minDecibels = -90;
-    analyser.maxDecibels = -10;
-    analyser.smoothingTimeConstant = 0.85;
-    source.connect(analyser);
-    analyser.connect(context.destination);
-    this.analysers.push(analyser);
-    return analyser;
-  }
-  static analyze(analyser) {
-    if (analyser != void 0) {
-      let pcmData = new Float32Array(analyser.fftSize);
-      let sumSquares = 0;
-      analyser.getFloatTimeDomainData(pcmData);
-      for (const amplitude of pcmData) {
-        sumSquares += amplitude * amplitude;
-      }
-      return parseFloat(Math.sqrt(sumSquares / pcmData.length * 20).toFixed(1));
-    } else {
-      return parseFloat(Math.random().toFixed(1));
-    }
-  }
-  static dispose(audio) {
-    audio.pause();
-    audio.removeAttribute("src");
-    remove(this.audios, audio);
-  }
-  static destroy() {
-    for (let i = this.contexts.length - 1; i >= 0; i--) {
-      this.contexts[i].close();
-    }
-    for (let i = this.audios.length - 1; i >= 0; i--) {
-      this.dispose(this.audios[i]);
-    }
-  }
-}
-SoundManager.audios = [];
-SoundManager.analysers = [];
-SoundManager.contexts = [];
-SoundManager._volume = VOLUME;
 var MotionPreloadStrategy = /* @__PURE__ */ ((MotionPreloadStrategy2) => {
   MotionPreloadStrategy2["ALL"] = "ALL";
   MotionPreloadStrategy2["IDLE"] = "IDLE";
@@ -520,11 +418,25 @@ class MotionManager extends EventEmitter {
     super();
     this.motionGroups = {};
     this.state = new MotionState();
-    this.playing = false;
+    this._motionActive = false;
     this.destroyed = false;
+    this._playingSound = false;
+    this._sounds = {};
     this.settings = settings;
     this.tag = `MotionManager(${settings.name})`;
     this.state.tag = this.tag;
+  }
+  get motionActive() {
+    return this._motionActive;
+  }
+  get playingSound() {
+    return this._playingSound;
+  }
+  get currentSound() {
+    return this._currentSound;
+  }
+  get currentAnalyser() {
+    return this._currentAnalyser;
   }
   init(options) {
     if (options == null ? void 0 : options.idleMotionGroup) {
@@ -565,165 +477,64 @@ class MotionManager extends EventEmitter {
         return void 0;
       }
       if (this.motionGroups[group][index] === null) {
-        logger.warn(this.tag, `Cannot start motion at "${group}"[${index}] because it's already failed in loading.`);
+        logger.warn(this.tag, `Motion at "${group}"[${index}] failed to load.`);
         return void 0;
       }
       if (this.motionGroups[group][index]) {
         return this.motionGroups[group][index];
       }
-      const motion = yield this._loadMotion(group, index);
-      if (this.destroyed) {
-        return;
-      }
-      this.motionGroups[group][index] = motion != null ? motion : null;
-      return motion;
+      return void 0;
     });
   }
-  _loadMotion(group, index) {
-    throw new Error("Not implemented.");
-  }
-  speakUp(sound, volume, expression) {
-    return __async(this, null, function* () {
-      if (!config.sound) {
-        return false;
-      }
-      let audio;
-      let analyzer;
-      let context;
-      if (this.currentAudio) {
-        if (!this.currentAudio.ended) {
-          return false;
-        }
-      }
-      let soundURL;
-      const isBase64Content = sound && sound.startsWith("data:audio/wav;base64");
-      if (sound && !isBase64Content) {
-        var A = document.createElement("a");
-        A.href = sound;
-        sound = A.href;
-        soundURL = sound;
-      } else {
-        soundURL = "data:audio/wav;base64";
-      }
-      const isUrlPath = sound && (sound.startsWith("http") || sound.startsWith("blob"));
-      let file;
-      if (isUrlPath || isBase64Content) {
-        file = sound;
-      }
-      const that = this;
-      if (file) {
-        try {
-          audio = SoundManager.add(file, () => {
-            expression && that.expressionManager && that.expressionManager.resetExpression();
-            that.currentAudio = void 0;
-          }, () => {
-            expression && that.expressionManager && that.expressionManager.resetExpression();
-            that.currentAudio = void 0;
-          });
-          this.currentAudio = audio;
-          let _volume = 1;
-          if (volume !== void 0) {
-            _volume = volume;
-          }
-          SoundManager.volume = _volume;
-          context = SoundManager.addContext(this.currentAudio);
-          this.currentContext = context;
-          analyzer = SoundManager.addAnalyzer(this.currentAudio, this.currentContext);
-          this.currentAnalyzer = analyzer;
-        } catch (e) {
-          logger.warn(this.tag, "Failed to create audio", soundURL, e);
-        }
-      }
-      if (audio) {
-        const readyToPlay = SoundManager.play(audio).catch((e) => logger.warn(this.tag, "Failed to play audio", audio.src, e));
-        if (config.motionSync) {
-          yield readyToPlay;
-        }
-      }
-      if (this.state.shouldOverrideExpression()) {
-        this.expressionManager && this.expressionManager.resetExpression();
-      }
-      if (expression && this.expressionManager) {
-        this.expressionManager.setExpression(expression);
-      }
-      this.playing = true;
-      return true;
-    });
+  speak(sound, options = {}) {
+    if (!config.sound)
+      return;
+    this._currentSound = sound;
+    this._currentAnalyser = sound.media.nodes.analyser;
+    if (this.state.shouldOverrideExpression()) {
+      this.expressionManager && this.expressionManager.resetExpression();
+    }
+    if (options.expression && this.expressionManager) {
+      this.expressionManager.setExpression(options.expression);
+    }
+    const passedComplete = options == null ? void 0 : options.complete;
+    const complete = (s) => {
+      if (passedComplete)
+        passedComplete(s);
+      this._playingSound = false;
+      this._currentSound = void 0;
+      this._currentAnalyser = void 0;
+      options.expression && this.expressionManager && this.expressionManager.resetExpression();
+    };
+    options.complete = complete;
+    this._playingSound = true;
+    return sound.play(options);
   }
   startMotion(_0, _1) {
-    return __async(this, arguments, function* (group, index, priority = MotionPriority.NORMAL, sound, volume, expression) {
-      var _a;
-      if (this.currentAudio) {
-        if (!this.currentAudio.ended) {
-          return false;
-        }
-      }
-      if (!this.state.reserve(group, index, priority)) {
+    return __async(this, arguments, function* (group, index, priority = MotionPriority.NORMAL, sound, speakOptions = {}) {
+      var _a, _b, _c;
+      if (this.playingSound)
         return false;
-      }
+      if (!this.state.reserve(group, index, priority))
+        return false;
       const definition = (_a = this.definitions[group]) == null ? void 0 : _a[index];
-      if (!definition) {
+      if (!definition)
         return false;
-      }
-      if (this.currentAudio) {
-        SoundManager.dispose(this.currentAudio);
-      }
-      let audio;
-      let analyzer;
-      let context;
-      if (config.sound) {
-        const isBase64Content = sound && sound.startsWith("data:audio/wav;base64");
-        if (sound && !isBase64Content) {
-          var A = document.createElement("a");
-          A.href = sound;
-          sound = A.href;
-        }
-        const isUrlPath = sound && (sound.startsWith("http") || sound.startsWith("blob"));
-        const soundURL = this.getSoundFile(definition);
-        let file = soundURL;
-        if (soundURL) {
-          file = this.settings.resolveURL(soundURL) + "?cache-buster=" + new Date().getTime();
-        }
-        if (isUrlPath || isBase64Content) {
-          file = sound;
-        }
-        const that = this;
-        if (file) {
-          try {
-            audio = SoundManager.add(file, () => {
-              expression && that.expressionManager && that.expressionManager.resetExpression();
-              that.currentAudio = void 0;
-            }, () => {
-              expression && that.expressionManager && that.expressionManager.resetExpression();
-              that.currentAudio = void 0;
-            });
-            this.currentAudio = audio;
-            let _volume = 1;
-            if (volume !== void 0) {
-              _volume = volume;
-            }
-            SoundManager.volume = _volume;
-            context = SoundManager.addContext(this.currentAudio);
-            this.currentContext = context;
-            analyzer = SoundManager.addAnalyzer(this.currentAudio, this.currentContext);
-            this.currentAnalyzer = analyzer;
-          } catch (e) {
-            logger.warn(this.tag, "Failed to create audio", soundURL, e);
-          }
-        }
-      }
       const motion = yield this.loadMotion(group, index);
-      if (audio) {
-        priority = 3;
-        const readyToPlay = SoundManager.play(audio).catch((e) => logger.warn(this.tag, "Failed to play audio", audio.src, e));
-        if (config.motionSync) {
-          yield readyToPlay;
+      let soundInstance;
+      if (config.sound) {
+        if (sound) {
+          soundInstance = yield this.speak(sound, speakOptions);
+          priority = MotionPriority.FORCE;
+        } else if ((_c = (_b = this._sounds) == null ? void 0 : _b[group]) == null ? void 0 : _c[index]) {
+          soundInstance = yield this.speak(this._sounds[group][index], speakOptions);
+          priority = MotionPriority.FORCE;
         }
       }
       if (!this.state.start(motion, group, index, priority)) {
-        if (audio) {
-          SoundManager.dispose(audio);
-          this.currentAudio = void 0;
+        if (soundInstance) {
+          soundInstance.stop();
+          soundInstance.destroy();
         }
         return false;
       }
@@ -731,11 +542,11 @@ class MotionManager extends EventEmitter {
         this.expressionManager && this.expressionManager.resetExpression();
       }
       logger.log(this.tag, "Start motion:", this.getMotionName(definition));
-      this.emit("motionStart", group, index, audio);
-      if (expression && this.expressionManager) {
-        this.expressionManager.setExpression(expression);
+      this.emit("motionStart", group, index, soundInstance, sound);
+      if (speakOptions.expression && this.expressionManager) {
+        this.expressionManager.setExpression(speakOptions.expression);
       }
-      this.playing = true;
+      this._motionActive = true;
       this._startMotion(motion);
       return true;
     });
@@ -759,9 +570,8 @@ class MotionManager extends EventEmitter {
     });
   }
   stopSpeaking() {
-    if (this.currentAudio) {
-      SoundManager.dispose(this.currentAudio);
-      this.currentAudio = void 0;
+    if (this.currentAnalyser) {
+      this._currentAnalyser = void 0;
     }
   }
   stopAllMotions() {
@@ -772,8 +582,8 @@ class MotionManager extends EventEmitter {
   update(model, now) {
     var _a;
     if (this.isFinished()) {
-      if (this.playing) {
-        this.playing = false;
+      if (this.motionActive) {
+        this._motionActive = false;
         this.emit("motionFinish");
       }
       if (this.state.shouldOverrideExpression()) {
@@ -787,17 +597,34 @@ class MotionManager extends EventEmitter {
     return this.updateParameters(model, now);
   }
   mouthSync() {
-    if (this.currentAnalyzer) {
-      return SoundManager.analyze(this.currentAnalyzer);
+    if (this.currentAnalyser) {
+      let pcmData = new Float32Array(this.currentAnalyser.fftSize);
+      let sumSquares = 0;
+      this.currentAnalyser.getFloatTimeDomainData(pcmData);
+      for (const amplitude of pcmData) {
+        sumSquares += amplitude * amplitude;
+      }
+      return parseFloat(Math.sqrt(sumSquares / pcmData.length * 20).toFixed(1));
     } else {
       return 0;
     }
+  }
+  registerSound(sound, group, index) {
+    if (!this._sounds[group])
+      this._sounds[group] = [];
+    this._sounds[group][index] = sound;
   }
   destroy() {
     var _a;
     this.destroyed = true;
     this.emit("destroy");
+    this.stopSpeaking();
     this.stopAllMotions();
+    for (const group in this._sounds) {
+      this._sounds[group].length = 0;
+      delete this._sounds[group];
+    }
+    this._sounds = void 0;
     (_a = this.expressionManager) == null ? void 0 : _a.destroy();
     const self = this;
     self.definitions = void 0;
@@ -829,10 +656,13 @@ class InternalModel extends EventEmitter {
     const size = this.getSize();
     self.originalWidth = size[0];
     self.originalHeight = size[1];
-    const layout = Object.assign({
-      width: LOGICAL_WIDTH,
-      height: LOGICAL_HEIGHT
-    }, this.getLayout());
+    const layout = Object.assign(
+      {
+        width: LOGICAL_WIDTH,
+        height: LOGICAL_HEIGHT
+      },
+      this.getLayout()
+    );
     this.localTransform.scale(layout.width / LOGICAL_WIDTH, layout.height / LOGICAL_HEIGHT);
     self.width = this.originalWidth * this.localTransform.a;
     self.height = this.originalHeight * this.localTransform.d;
@@ -891,831 +721,263 @@ class InternalModel extends EventEmitter {
     this.motionManager = void 0;
   }
 }
-const TAG$1 = "XHRLoader";
-class NetworkError extends Error {
-  constructor(message, url2, status, aborted = false) {
-    super(message);
-    this.url = url2;
-    this.status = status;
-    this.aborted = aborted;
-  }
-}
-const _XHRLoader = class {
-  static createXHR(target, url2, type, onload, onerror) {
-    const xhr = new XMLHttpRequest();
-    _XHRLoader.allXhrSet.add(xhr);
-    if (target) {
-      let xhrSet = _XHRLoader.xhrMap.get(target);
-      if (!xhrSet) {
-        xhrSet = /* @__PURE__ */ new Set([xhr]);
-        _XHRLoader.xhrMap.set(target, xhrSet);
-      } else {
-        xhrSet.add(xhr);
-      }
-      if (!target.listeners("destroy").includes(_XHRLoader.cancelXHRs)) {
-        target.once("destroy", _XHRLoader.cancelXHRs);
-      }
-    }
-    xhr.open("GET", url2);
-    xhr.responseType = type;
-    xhr.onload = () => {
-      if ((xhr.status === 200 || xhr.status === 0) && xhr.response) {
-        onload(xhr.response);
-      } else {
-        xhr.onerror();
-      }
-    };
-    xhr.onerror = () => {
-      logger.warn(TAG$1, `Failed to load resource as ${xhr.responseType} (Status ${xhr.status}): ${url2}`);
-      onerror(new NetworkError("Network error.", url2, xhr.status));
-    };
-    xhr.onabort = () => onerror(new NetworkError("Aborted.", url2, xhr.status, true));
-    xhr.onloadend = () => {
-      var _a;
-      _XHRLoader.allXhrSet.delete(xhr);
-      if (target) {
-        (_a = _XHRLoader.xhrMap.get(target)) == null ? void 0 : _a.delete(xhr);
-      }
-    };
-    return xhr;
-  }
-  static cancelXHRs() {
-    var _a;
-    (_a = _XHRLoader.xhrMap.get(this)) == null ? void 0 : _a.forEach((xhr) => {
-      xhr.abort();
-      _XHRLoader.allXhrSet.delete(xhr);
-    });
-    _XHRLoader.xhrMap.delete(this);
-  }
-  static release() {
-    _XHRLoader.allXhrSet.forEach((xhr) => xhr.abort());
-    _XHRLoader.allXhrSet.clear();
-    _XHRLoader.xhrMap = /* @__PURE__ */ new WeakMap();
-  }
-};
-let XHRLoader = _XHRLoader;
-XHRLoader.xhrMap = /* @__PURE__ */ new WeakMap();
-XHRLoader.allXhrSet = /* @__PURE__ */ new Set();
-XHRLoader.loader = (context, next) => {
-  return new Promise((resolve, reject) => {
-    const xhr = _XHRLoader.createXHR(context.target, context.settings ? context.settings.resolveURL(context.url) : context.url, context.type, (data) => {
-      context.result = data;
-      resolve();
-    }, reject);
-    xhr.send();
-  });
-};
-function runMiddlewares(middleware, context) {
-  let index = -1;
-  return dispatch(0);
-  function dispatch(i, err) {
-    if (err)
-      return Promise.reject(err);
-    if (i <= index)
-      return Promise.reject(new Error("next() called multiple times"));
-    index = i;
-    const fn = middleware[i];
-    if (!fn)
-      return Promise.resolve();
-    try {
-      return Promise.resolve(fn(context, dispatch.bind(null, i + 1)));
-    } catch (err2) {
-      return Promise.reject(err2);
-    }
-  }
-}
-class Live2DLoader {
-  static load(context) {
-    return runMiddlewares(this.middlewares, context).then(() => context.result);
-  }
-}
-Live2DLoader.middlewares = [XHRLoader.loader];
-function createTexture(url2, options = {}) {
-  var _a;
-  const textureOptions = { resourceOptions: { crossorigin: options.crossOrigin } };
-  if (Texture.fromURL) {
-    return Texture.fromURL(url2, textureOptions).catch((e) => {
-      if (e instanceof Error) {
-        throw e;
-      }
-      const err = new Error("Texture loading error");
-      err.event = e;
-      throw err;
-    });
-  }
-  textureOptions.resourceOptions.autoLoad = false;
-  const texture = Texture.from(url2, textureOptions);
-  if (texture.baseTexture.valid) {
-    return Promise.resolve(texture);
-  }
-  const resource = texture.baseTexture.resource;
-  (_a = resource._live2d_load) != null ? _a : resource._live2d_load = new Promise((resolve, reject) => {
-    const errorHandler = (event) => {
-      resource.source.removeEventListener("error", errorHandler);
-      const err = new Error("Texture loading error");
-      err.event = event;
-      reject(err);
-    };
-    resource.source.addEventListener("error", errorHandler);
-    resource.load().then(() => resolve(texture)).catch(errorHandler);
-  });
-  return resource._live2d_load;
-}
-const TAG = "Live2DFactory";
-const urlToJSON = (context, next) => __async(void 0, null, function* () {
-  if (typeof context.source === "string") {
-    const data = yield Live2DLoader.load({
-      url: context.source,
-      type: "json",
-      target: context.live2dModel
-    });
-    data.url = context.source;
-    context.source = data;
-    context.live2dModel.emit("settingsJSONLoaded", data);
-  }
-  return next();
-});
-const jsonToSettings = (context, next) => __async(void 0, null, function* () {
-  if (context.source instanceof ModelSettings) {
-    context.settings = context.source;
-    return next();
-  } else if (typeof context.source === "object") {
-    const runtime = Live2DFactory.findRuntime(context.source);
-    if (runtime) {
-      const settings = runtime.createModelSettings(context.source);
-      context.settings = settings;
-      context.live2dModel.emit("settingsLoaded", settings);
-      return next();
-    }
-  }
-  throw new TypeError("Unknown settings format.");
-});
-const waitUntilReady = (context, next) => {
-  if (context.settings) {
-    const runtime = Live2DFactory.findRuntime(context.settings);
-    if (runtime) {
-      return runtime.ready().then(next);
-    }
-  }
-  return next();
-};
-const setupOptionals = (context, next) => __async(void 0, null, function* () {
-  yield next();
-  const internalModel = context.internalModel;
-  if (internalModel) {
-    const settings = context.settings;
-    const runtime = Live2DFactory.findRuntime(settings);
-    if (runtime) {
-      const tasks = [];
-      if (settings.pose) {
-        tasks.push(Live2DLoader.load({
-          settings,
-          url: settings.pose,
-          type: "json",
-          target: internalModel
-        }).then((data) => {
-          internalModel.pose = runtime.createPose(internalModel.coreModel, data);
-          context.live2dModel.emit("poseLoaded", internalModel.pose);
-        }).catch((e) => {
-          context.live2dModel.emit("poseLoadError", e);
-          logger.warn(TAG, "Failed to load pose.", e);
-        }));
-      }
-      if (settings.physics) {
-        tasks.push(Live2DLoader.load({
-          settings,
-          url: settings.physics,
-          type: "json",
-          target: internalModel
-        }).then((data) => {
-          internalModel.physics = runtime.createPhysics(internalModel.coreModel, data);
-          context.live2dModel.emit("physicsLoaded", internalModel.physics);
-        }).catch((e) => {
-          context.live2dModel.emit("physicsLoadError", e);
-          logger.warn(TAG, "Failed to load physics.", e);
-        }));
-      }
-      if (tasks.length) {
-        yield Promise.all(tasks);
-      }
-    }
-  }
-});
-const setupEssentials = (context, next) => __async(void 0, null, function* () {
-  if (context.settings) {
-    const live2DModel = context.live2dModel;
-    const textureLoadings = context.settings.textures.map((tex) => {
-      const url2 = context.settings.resolveURL(tex);
-      return createTexture(url2, { crossOrigin: context.options.crossOrigin });
-    });
-    yield next();
-    if (context.internalModel) {
-      live2DModel.internalModel = context.internalModel;
-      live2DModel.emit("modelLoaded", context.internalModel);
-    } else {
-      throw new TypeError("Missing internal model.");
-    }
-    live2DModel.textures = yield Promise.all(textureLoadings);
-    live2DModel.emit("textureLoaded", live2DModel.textures);
-  } else {
-    throw new TypeError("Missing settings.");
-  }
-});
-const createInternalModel = (context, next) => __async(void 0, null, function* () {
-  const settings = context.settings;
-  if (settings instanceof ModelSettings) {
-    const runtime = Live2DFactory.findRuntime(settings);
-    if (!runtime) {
-      throw new TypeError("Unknown model settings.");
-    }
-    const modelData = yield Live2DLoader.load({
-      settings,
-      url: settings.moc,
-      type: "arraybuffer",
-      target: context.live2dModel
-    });
-    if (!runtime.isValidMoc(modelData)) {
-      throw new Error("Invalid moc data");
-    }
-    const coreModel = runtime.createCoreModel(modelData);
-    context.internalModel = runtime.createInternalModel(coreModel, settings, context.options);
-    return next();
-  }
-  throw new TypeError("Missing settings.");
-});
-const _Live2DFactory = class {
-  static registerRuntime(runtime) {
-    _Live2DFactory.runtimes.push(runtime);
-    _Live2DFactory.runtimes.sort((a, b) => b.version - a.version);
-  }
-  static findRuntime(source) {
-    for (const runtime of _Live2DFactory.runtimes) {
-      if (runtime.test(source)) {
-        return runtime;
-      }
-    }
-  }
-  static setupLive2DModel(live2dModel, source, options) {
-    return __async(this, null, function* () {
-      const textureLoaded = new Promise((resolve) => live2dModel.once("textureLoaded", resolve));
-      const modelLoaded = new Promise((resolve) => live2dModel.once("modelLoaded", resolve));
-      const readyEventEmitted = Promise.all([textureLoaded, modelLoaded]).then(() => live2dModel.emit("ready"));
-      yield runMiddlewares(_Live2DFactory.live2DModelMiddlewares, {
-        live2dModel,
-        source,
-        options: options || {}
-      });
-      yield readyEventEmitted;
-      live2dModel.emit("load");
-    });
-  }
-  static loadMotion(motionManager, group, index) {
-    var _a, _b;
-    const handleError = (e) => motionManager.emit("motionLoadError", group, index, e);
-    try {
-      const definition = (_a = motionManager.definitions[group]) == null ? void 0 : _a[index];
-      if (!definition) {
-        return Promise.resolve(void 0);
-      }
-      if (!motionManager.listeners("destroy").includes(_Live2DFactory.releaseTasks)) {
-        motionManager.once("destroy", _Live2DFactory.releaseTasks);
-      }
-      let tasks = _Live2DFactory.motionTasksMap.get(motionManager);
-      if (!tasks) {
-        tasks = {};
-        _Live2DFactory.motionTasksMap.set(motionManager, tasks);
-      }
-      let taskGroup = tasks[group];
-      if (!taskGroup) {
-        taskGroup = [];
-        tasks[group] = taskGroup;
-      }
-      const path = motionManager.getMotionFile(definition);
-      (_b = taskGroup[index]) != null ? _b : taskGroup[index] = Live2DLoader.load({
-        url: path,
-        settings: motionManager.settings,
-        type: motionManager.motionDataType,
-        target: motionManager
-      }).then((data) => {
-        var _a2;
-        const taskGroup2 = (_a2 = _Live2DFactory.motionTasksMap.get(motionManager)) == null ? void 0 : _a2[group];
-        if (taskGroup2) {
-          delete taskGroup2[index];
-        }
-        const motion = motionManager.createMotion(data, group, definition);
-        motionManager.emit("motionLoaded", group, index, motion);
-        return motion;
-      }).catch((e) => {
-        logger.warn(motionManager.tag, `Failed to load motion: ${path}
-`, e);
-        handleError(e);
-      });
-      return taskGroup[index];
-    } catch (e) {
-      logger.warn(motionManager.tag, `Failed to load motion at "${group}"[${index}]
-`, e);
-      handleError(e);
-    }
-    return Promise.resolve(void 0);
-  }
-  static loadExpression(expressionManager, index) {
-    var _a;
-    const handleError = (e) => expressionManager.emit("expressionLoadError", index, e);
-    try {
-      const definition = expressionManager.definitions[index];
-      if (!definition) {
-        return Promise.resolve(void 0);
-      }
-      if (!expressionManager.listeners("destroy").includes(_Live2DFactory.releaseTasks)) {
-        expressionManager.once("destroy", _Live2DFactory.releaseTasks);
-      }
-      let tasks = _Live2DFactory.expressionTasksMap.get(expressionManager);
-      if (!tasks) {
-        tasks = [];
-        _Live2DFactory.expressionTasksMap.set(expressionManager, tasks);
-      }
-      const path = expressionManager.getExpressionFile(definition);
-      (_a = tasks[index]) != null ? _a : tasks[index] = Live2DLoader.load({
-        url: path,
-        settings: expressionManager.settings,
-        type: "json",
-        target: expressionManager
-      }).then((data) => {
-        const tasks2 = _Live2DFactory.expressionTasksMap.get(expressionManager);
-        if (tasks2) {
-          delete tasks2[index];
-        }
-        const expression = expressionManager.createExpression(data, definition);
-        expressionManager.emit("expressionLoaded", index, expression);
-        return expression;
-      }).catch((e) => {
-        logger.warn(expressionManager.tag, `Failed to load expression: ${path}
-`, e);
-        handleError(e);
-      });
-      return tasks[index];
-    } catch (e) {
-      logger.warn(expressionManager.tag, `Failed to load expression at [${index}]
-`, e);
-      handleError(e);
-    }
-    return Promise.resolve(void 0);
-  }
-  static releaseTasks() {
-    if (this instanceof MotionManager) {
-      _Live2DFactory.motionTasksMap.delete(this);
-    } else {
-      _Live2DFactory.expressionTasksMap.delete(this);
-    }
-  }
-};
-let Live2DFactory = _Live2DFactory;
-Live2DFactory.runtimes = [];
-Live2DFactory.urlToJSON = urlToJSON;
-Live2DFactory.jsonToSettings = jsonToSettings;
-Live2DFactory.waitUntilReady = waitUntilReady;
-Live2DFactory.setupOptionals = setupOptionals;
-Live2DFactory.setupEssentials = setupEssentials;
-Live2DFactory.createInternalModel = createInternalModel;
-Live2DFactory.live2DModelMiddlewares = [
-  urlToJSON,
-  jsonToSettings,
-  waitUntilReady,
-  setupOptionals,
-  setupEssentials,
-  createInternalModel
-];
-Live2DFactory.motionTasksMap = /* @__PURE__ */ new WeakMap();
-Live2DFactory.expressionTasksMap = /* @__PURE__ */ new WeakMap();
-MotionManager.prototype["_loadMotion"] = function(group, index) {
-  return Live2DFactory.loadMotion(this, group, index);
-};
-ExpressionManager.prototype["_loadExpression"] = function(index) {
-  return Live2DFactory.loadExpression(this, index);
-};
 class InteractionMixin {
   constructor() {
-    this._autoInteract = false;
+    this._followMouse = false;
+    this._touchEvents = false;
   }
-  get autoInteract() {
-    return this._autoInteract;
+  get followMouse() {
+    return this._followMouse;
   }
-  set autoInteract(autoInteract) {
-    if (autoInteract !== this._autoInteract) {
-      if (autoInteract) {
-        this.on("pointertap", onTap, this);
-      } else {
-        this.off("pointertap", onTap, this);
-      }
-      this._autoInteract = autoInteract;
+  set followMouse(follow) {
+    if (this._followMouse === follow)
+      return;
+    if (follow) {
+      this.on("pointermove", onPointerMove);
+    } else {
+      this.off("pointermove", onPointerMove);
     }
+    this._followMouse = follow;
   }
-  registerInteraction(manager) {
-    if (manager !== this.interactionManager) {
-      this.unregisterInteraction();
-      if (this._autoInteract && manager) {
-        this.interactionManager = manager;
-        manager.on("pointermove", onPointerMove, this);
-      }
-    }
+  get touchEvents() {
+    return this._touchEvents;
   }
-  unregisterInteraction() {
-    var _a;
-    if (this.interactionManager) {
-      (_a = this.interactionManager) == null ? void 0 : _a.off("pointermove", onPointerMove, this);
-      this.interactionManager = void 0;
+  set touchEvents(touchable) {
+    if (this._touchEvents === touchable)
+      return;
+    if (touchable) {
+      this.on("pointertap", onTap);
+    } else {
+      this.off("pointertap", onTap);
     }
+    this._touchEvents = touchable;
   }
 }
 function onTap(event) {
-  this.tap(event.data.global.x, event.data.global.y);
+  this.tap(event.globalX, event.globalY);
 }
 function onPointerMove(event) {
-  this.focus(event.data.global.x, event.data.global.y);
+  this.focus(event.globalX, event.globalY);
 }
 class Live2DTransform extends Transform {
 }
-const tempPoint = new Point();
-const tempMatrix = new Matrix();
-let tickerRef;
-class Live2DModel extends Container {
-  constructor(options) {
-    super();
-    this.tag = "Live2DModel(uninitialized)";
-    this.textures = [];
-    this.transform = new Live2DTransform();
-    this.anchor = new ObservablePoint(this.onAnchorChange, this, 0, 0);
-    this.glContextID = -1;
-    this.elapsedTime = performance.now();
-    this.deltaTime = 0;
-    this.wasUpdated = false;
-    this._autoUpdate = false;
-    this.once("modelLoaded", () => this.init(options));
-  }
-  static from(source, options) {
-    const model = new this(options);
-    return Live2DFactory.setupLive2DModel(model, source, options).then(() => model);
-  }
-  static fromSync(source, options) {
-    const model = new this(options);
-    Live2DFactory.setupLive2DModel(model, source, options).then(options == null ? void 0 : options.onLoad).catch(options == null ? void 0 : options.onError);
-    return model;
-  }
-  static registerTicker(tickerClass) {
-    tickerRef = tickerClass;
-  }
-  get autoUpdate() {
-    return this._autoUpdate;
-  }
-  set autoUpdate(autoUpdate) {
-    var _a;
-    tickerRef || (tickerRef = (_a = window.PIXI) == null ? void 0 : _a.Ticker);
-    if (autoUpdate) {
-      if (!this._destroyed) {
-        if (tickerRef) {
-          tickerRef.shared.add(this.onTickerUpdate, this);
-          this._autoUpdate = true;
-        } else {
-          logger.warn(this.tag, "No Ticker registered, please call Live2DModel.registerTicker(Ticker).");
-        }
-      }
-    } else {
-      tickerRef == null ? void 0 : tickerRef.shared.remove(this.onTickerUpdate, this);
-      this._autoUpdate = false;
-    }
-  }
-  init(options) {
-    this.tag = `Live2DModel(${this.internalModel.settings.name})`;
-    const _options = Object.assign({
-      autoUpdate: true,
-      autoInteract: true
-    }, options);
-    if (_options.autoInteract) {
-      this.interactive = true;
-    }
-    this.autoInteract = _options.autoInteract;
-    this.autoUpdate = _options.autoUpdate;
-  }
-  onAnchorChange() {
-    this.pivot.set(this.anchor.x * this.internalModel.width, this.anchor.y * this.internalModel.height);
-  }
-  motion(group, index, priority, sound, volume, expression) {
-    return index === void 0 ? this.internalModel.motionManager.startRandomMotion(group, priority) : this.internalModel.motionManager.startMotion(group, index, priority, sound, volume, expression);
-  }
-  resetMotions() {
-    return this.internalModel.motionManager.stopAllMotions();
-  }
-  speak(sound, volume, expression) {
-    return this.internalModel.motionManager.speakUp(sound, volume, expression);
-  }
-  stopSpeaking() {
-    return this.internalModel.motionManager.stopSpeaking();
-  }
-  expression(id) {
-    if (this.internalModel.motionManager.expressionManager) {
-      return id === void 0 ? this.internalModel.motionManager.expressionManager.setRandomExpression() : this.internalModel.motionManager.expressionManager.setExpression(id);
-    }
-    return Promise.resolve(false);
-  }
-  focus(x, y, instant = false) {
-    tempPoint.x = x;
-    tempPoint.y = y;
-    this.toModelPosition(tempPoint, tempPoint, true);
-    let tx = tempPoint.x / this.internalModel.originalWidth * 2 - 1;
-    let ty = tempPoint.y / this.internalModel.originalHeight * 2 - 1;
-    let radian = Math.atan2(ty, tx);
-    this.internalModel.focusController.focus(Math.cos(radian), -Math.sin(radian), instant);
-  }
-  tap(x, y) {
-    const hitAreaNames = this.hitTest(x, y);
-    if (hitAreaNames.length) {
-      logger.log(this.tag, `Hit`, hitAreaNames);
-      this.emit("hit", hitAreaNames);
-    }
-  }
-  hitTest(x, y) {
-    tempPoint.x = x;
-    tempPoint.y = y;
-    this.toModelPosition(tempPoint, tempPoint);
-    return this.internalModel.hitTest(tempPoint.x, tempPoint.y);
-  }
-  toModelPosition(position, result = position.clone(), skipUpdate) {
-    if (!skipUpdate) {
-      this._recursivePostUpdateTransform();
-      if (!this.parent) {
-        this.parent = this._tempDisplayObjectParent;
-        this.displayObjectUpdateTransform();
-        this.parent = null;
-      } else {
-        this.displayObjectUpdateTransform();
-      }
-    }
-    this.transform.worldTransform.applyInverse(position, result);
-    this.internalModel.localTransform.applyInverse(result, result);
-    return result;
-  }
-  containsPoint(point) {
-    return this.getBounds(true).contains(point.x, point.y);
-  }
-  _calculateBounds() {
-    this._bounds.addFrame(this.transform, 0, 0, this.internalModel.width, this.internalModel.height);
-  }
-  onTickerUpdate() {
-    this.update(tickerRef.shared.deltaMS);
-  }
-  update(dt) {
-    this.deltaTime += dt;
-    this.elapsedTime += dt;
-    this.wasUpdated = true;
-  }
-  _render(renderer) {
-    this.registerInteraction(renderer.plugins.interaction);
-    if (!this.wasUpdated) {
-      return;
-    }
-    renderer.batch.reset();
-    renderer.geometry.reset();
-    renderer.shader.reset();
-    renderer.state.reset();
-    let shouldUpdateTexture = false;
-    if (this.glContextID !== renderer.CONTEXT_UID) {
-      this.glContextID = renderer.CONTEXT_UID;
-      this.internalModel.updateWebGLContext(renderer.gl, this.glContextID);
-      shouldUpdateTexture = true;
-    }
-    for (let i = 0; i < this.textures.length; i++) {
-      const texture = this.textures[i];
-      if (!texture.valid) {
-        continue;
-      }
-      if (shouldUpdateTexture || !texture.baseTexture._glTextures[this.glContextID]) {
-        renderer.gl.pixelStorei(WebGLRenderingContext.UNPACK_FLIP_Y_WEBGL, this.internalModel.textureFlipY);
-        renderer.texture.bind(texture.baseTexture, 0);
-      }
-      this.internalModel.bindTexture(i, texture.baseTexture._glTextures[this.glContextID].texture);
-      texture.baseTexture.touched = renderer.textureGC.count;
-    }
-    const viewport = renderer.framebuffer.viewport;
-    this.internalModel.viewport = [viewport.x, viewport.y, viewport.width, viewport.height];
-    if (this.deltaTime) {
-      this.internalModel.update(this.deltaTime, this.elapsedTime);
-      this.deltaTime = 0;
-    }
-    const internalTransform = tempMatrix.copyFrom(renderer.globalUniforms.uniforms.projectionMatrix).append(this.worldTransform);
-    this.internalModel.updateTransform(internalTransform);
-    this.internalModel.draw(renderer.gl);
-    renderer.state.reset();
-    renderer.texture.reset();
-  }
-  destroy(options) {
-    this.emit("destroy");
-    this.autoUpdate = false;
-    this.unregisterInteraction();
-    if (options == null ? void 0 : options.texture) {
-      this.textures.forEach((texture) => texture.destroy(options.baseTexture));
-    }
-    this.internalModel.destroy();
-    super.destroy(options);
-  }
+function loadArrayBuffer(url2) {
+  return __async(this, null, function* () {
+    const response = yield fetch(url2);
+    const arrayBuffer = yield response.arrayBuffer();
+    return arrayBuffer;
+  });
 }
-applyMixins(Live2DModel, [InteractionMixin]);
-const _FileLoader = class {
-  static resolveURL(settingsURL, filePath) {
-    var _a;
-    const resolved = (_a = _FileLoader.filesMap[settingsURL]) == null ? void 0 : _a[filePath];
-    if (resolved === void 0) {
-      throw new Error("Cannot find this file from uploaded files: " + filePath);
-    }
-    return resolved;
+function unload(asset) {
+  for (const texture of asset.textures)
+    texture.destroy(true);
+  asset.textures.length = 0;
+  for (const key in asset.sounds) {
+    for (const sound of asset.sounds[key])
+      sound.destroy();
+    asset.sounds[key].length = 0;
+    delete asset.sounds[key];
   }
-  static upload(files, settings) {
+  for (const key in asset.motions) {
+    asset.motions[key].length = 0;
+    delete asset.motions[key];
+  }
+  if (asset.expressions)
+    asset.expressions.length = 0;
+  delete asset.moc;
+  delete asset.textures;
+  delete asset.motions;
+  delete asset.physics;
+  delete asset.pose;
+  delete asset.expressions;
+  delete asset.sounds;
+  delete asset.settings;
+  console.log(asset);
+}
+const cubism4Load = {
+  name: "loadCubism4",
+  extension: {
+    type: ExtensionType.LoadParser,
+    priority: LoaderParserPriority.Normal
+  },
+  test(url2) {
+    return path.extname(url2) === ".moc3";
+  },
+  load: loadArrayBuffer,
+  testParse(asset) {
+    if (!asset.FileReferences)
+      return false;
+    return !!asset.FileReferences.Moc && !!asset.FileReferences.Textures;
+  },
+  parse(asset, loadAsset, loader) {
     return __async(this, null, function* () {
-      const fileMap = {};
-      for (const definedFile of settings.getDefinedFiles()) {
-        const actualPath = decodeURI(url.resolve(settings.url, definedFile));
-        const actualFile = files.find((file) => file.webkitRelativePath === actualPath);
-        if (actualFile) {
-          fileMap[definedFile] = URL.createObjectURL(actualFile);
-        }
+      const modelData = {
+        textures: []
+      };
+      const FR = asset.FileReferences;
+      const promises = [];
+      modelData.settings = asset;
+      asset.url = loadAsset.src;
+      const dir = path.dirname(loadAsset.src);
+      promises.push(loader.load(
+        path.join(dir, FR.Moc)
+      ).then((moc) => {
+        modelData.moc = moc;
+      }));
+      for (const textureIndex in FR.Textures) {
+        promises.push(
+          loader.load(
+            path.join(dir, FR.Textures[textureIndex])
+          ).then((texture) => {
+            modelData.textures[textureIndex] = texture;
+          })
+        );
       }
-      _FileLoader.filesMap[settings._objectURL] = fileMap;
-    });
-  }
-  static createSettings(files) {
-    return __async(this, null, function* () {
-      const settingsFile = files.find((file) => file.name.endsWith("model.json") || file.name.endsWith("model3.json"));
-      if (!settingsFile) {
-        throw new TypeError("Settings file not found");
-      }
-      const settingsText = yield _FileLoader.readText(settingsFile);
-      const settingsJSON = JSON.parse(settingsText);
-      settingsJSON.url = settingsFile.webkitRelativePath;
-      const runtime = Live2DFactory.findRuntime(settingsJSON);
-      if (!runtime) {
-        throw new Error("Unknown settings JSON");
-      }
-      const settings = runtime.createModelSettings(settingsJSON);
-      settings._objectURL = URL.createObjectURL(settingsFile);
-      return settings;
-    });
-  }
-  static readText(file) {
-    return __async(this, null, function* () {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsText(file, "utf8");
-      });
-    });
-  }
-};
-let FileLoader = _FileLoader;
-FileLoader.filesMap = {};
-FileLoader.factory = (context, next) => __async(void 0, null, function* () {
-  if (Array.isArray(context.source) && context.source[0] instanceof File) {
-    const files = context.source;
-    let settings = files.settings;
-    if (!settings) {
-      settings = yield _FileLoader.createSettings(files);
-    } else if (!settings._objectURL) {
-      throw new Error('"_objectURL" must be specified in ModelSettings');
-    }
-    settings.validateFiles(files.map((file) => encodeURI(file.webkitRelativePath)));
-    yield _FileLoader.upload(files, settings);
-    settings.resolveURL = function(url2) {
-      return _FileLoader.resolveURL(this._objectURL, url2);
-    };
-    context.source = settings;
-    context.live2dModel.once("modelLoaded", (internalModel) => {
-      internalModel.once("destroy", function() {
-        const objectURL = this.settings._objectURL;
-        URL.revokeObjectURL(objectURL);
-        if (_FileLoader.filesMap[objectURL]) {
-          for (const resourceObjectURL of Object.values(_FileLoader.filesMap[objectURL])) {
-            URL.revokeObjectURL(resourceObjectURL);
+      if (FR.Motions) {
+        modelData.motions = {};
+        modelData.sounds = {};
+        for (const motionName in FR.Motions) {
+          modelData.motions[motionName] = [];
+          modelData.sounds[motionName] = [];
+          for (const motionIndex in FR.Motions[motionName]) {
+            const data = FR.Motions[motionName][motionIndex];
+            promises.push(
+              loader.load(
+                path.join(dir, data.File)
+              ).then((motion) => {
+                modelData.motions[motionName][motionIndex] = motion;
+              })
+            );
+            if (data.Sound) {
+              promises.push(
+                loader.load(
+                  path.join(dir, data.Sound)
+                ).then((sound) => {
+                  modelData.sounds[motionName][motionIndex] = sound;
+                })
+              );
+            }
           }
         }
-        delete _FileLoader.filesMap[objectURL];
-      });
-    });
-  }
-  return next();
-});
-Live2DFactory.live2DModelMiddlewares.unshift(FileLoader.factory);
-const _ZipLoader = class {
-  static unzip(reader, settings) {
-    return __async(this, null, function* () {
-      const filePaths = yield _ZipLoader.getFilePaths(reader);
-      const requiredFilePaths = [];
-      for (const definedFile of settings.getDefinedFiles()) {
-        const actualPath = decodeURI(url.resolve(settings.url, definedFile));
-        if (filePaths.includes(actualPath)) {
-          requiredFilePaths.push(actualPath);
+      }
+      if (FR.Physics) {
+        promises.push(loader.load(path.join(dir, FR.Physics)).then((physics) => {
+          modelData.physics = physics;
+        }));
+      }
+      if (FR.Expressions) {
+        modelData.expressions = [];
+        for (const expressionIndex in FR.Expressions) {
+          promises.push(loader.load(path.join(dir, FR.Expressions[expressionIndex].File)).then((expression) => {
+            modelData.expressions[expressionIndex] = expression;
+          }));
         }
       }
-      const files = yield _ZipLoader.getFiles(reader, requiredFilePaths);
-      for (let i = 0; i < files.length; i++) {
-        const path = requiredFilePaths[i];
-        const file = files[i];
-        Object.defineProperty(file, "webkitRelativePath", {
-          value: path
-        });
+      if (FR.Pose) {
+        promises.push(loader.load(path.join(dir, FR.Pose)).then((pose) => {
+          modelData.pose = pose;
+        }));
       }
-      return files;
+      yield Promise.all(promises);
+      return modelData;
     });
-  }
-  static createSettings(reader) {
-    return __async(this, null, function* () {
-      const filePaths = yield _ZipLoader.getFilePaths(reader);
-      const settingsFilePath = filePaths.find((path) => path.endsWith("model.json") || path.endsWith("model3.json"));
-      if (!settingsFilePath) {
-        throw new Error("Settings file not found");
-      }
-      const settingsText = yield _ZipLoader.readText(reader, settingsFilePath);
-      if (!settingsText) {
-        throw new Error("Empty settings file: " + settingsFilePath);
-      }
-      const settingsJSON = JSON.parse(settingsText);
-      settingsJSON.url = settingsFilePath;
-      const runtime = Live2DFactory.findRuntime(settingsJSON);
-      if (!runtime) {
-        throw new Error("Unknown settings JSON");
-      }
-      return runtime.createModelSettings(settingsJSON);
-    });
-  }
-  static zipReader(data, url2) {
-    return __async(this, null, function* () {
-      throw new Error("Not implemented");
-    });
-  }
-  static getFilePaths(reader) {
-    return __async(this, null, function* () {
-      throw new Error("Not implemented");
-    });
-  }
-  static getFiles(reader, paths) {
-    return __async(this, null, function* () {
-      throw new Error("Not implemented");
-    });
-  }
-  static readText(reader, path) {
-    return __async(this, null, function* () {
-      throw new Error("Not implemented");
-    });
-  }
-  static releaseReader(reader) {
-  }
+  },
+  unload
 };
-let ZipLoader = _ZipLoader;
-ZipLoader.ZIP_PROTOCOL = "zip://";
-ZipLoader.uid = 0;
-ZipLoader.factory = (context, next) => __async(void 0, null, function* () {
-  const source = context.source;
-  let sourceURL;
-  let zipBlob;
-  let settings;
-  if (typeof source === "string" && (source.endsWith(".zip") || source.startsWith(_ZipLoader.ZIP_PROTOCOL))) {
-    if (source.startsWith(_ZipLoader.ZIP_PROTOCOL)) {
-      sourceURL = source.slice(_ZipLoader.ZIP_PROTOCOL.length);
-    } else {
-      sourceURL = source;
-    }
-    zipBlob = yield Live2DLoader.load({
-      url: sourceURL,
-      type: "blob",
-      target: context.live2dModel
+const cubism2Load = {
+  name: "loadCubism2",
+  extension: {
+    type: ExtensionType.LoadParser,
+    priority: LoaderParserPriority.High
+  },
+  test(url2) {
+    const ext = path.extname(url2);
+    return ext === ".moc" || ext === ".mtn";
+  },
+  load: loadArrayBuffer,
+  testParse(asset) {
+    if (!asset.model)
+      return false;
+    return path.extname(asset.model) === ".moc";
+  },
+  parse(asset, loadAsset, loader) {
+    return __async(this, null, function* () {
+      const modelData = {
+        textures: []
+      };
+      const preferCreateImageBitmap = loadTextures.config.preferCreateImageBitmap;
+      loadTextures.config.preferCreateImageBitmap = false;
+      const promises = [];
+      modelData.settings = asset;
+      asset.url = loadAsset.src;
+      const dir = path.dirname(loadAsset.src);
+      promises.push(
+        loader.load(
+          path.join(dir, asset.model)
+        ).then((moc) => {
+          modelData.moc = moc;
+        })
+      );
+      for (const textureIndex in asset.textures) {
+        promises.push(
+          loader.load(
+            path.join(dir, asset.textures[textureIndex])
+          ).then((texture) => {
+            modelData.textures[textureIndex] = texture;
+          })
+        );
+      }
+      if (asset.motions) {
+        modelData.motions = {};
+        modelData.sounds = {};
+        for (const motionName in asset.motions) {
+          modelData.motions[motionName] = [];
+          modelData.sounds[motionName] = [];
+          for (const motionIndex in asset.motions[motionName]) {
+            promises.push(
+              loader.load(
+                path.join(dir, asset.motions[motionName][motionIndex].file)
+              ).then((motion) => {
+                modelData.motions[motionName][motionIndex] = motion;
+              })
+            );
+            if (asset.motions[motionName][motionIndex].sound) {
+              promises.push(
+                loader.load(
+                  path.join(dir, asset.motions[motionName][motionIndex].sound)
+                ).then((sound) => {
+                  modelData.sounds[motionName][motionIndex] = sound;
+                })
+              );
+            }
+          }
+        }
+      }
+      if (asset.physics) {
+        promises.push(loader.load(path.join(dir, asset.physics)).then((physics) => {
+          modelData.physics = physics;
+        }));
+      }
+      if (asset.expressions) {
+        modelData.expressions = [];
+        for (const expressionIndex in asset.expressions) {
+          promises.push(loader.load(path.join(dir, asset.expressions[expressionIndex].file)).then((expression) => {
+            modelData.expressions[expressionIndex] = expression;
+          }));
+        }
+      }
+      if (asset.pose) {
+        promises.push(loader.load(path.join(dir, asset.pose)).then((pose) => {
+          modelData.pose = pose;
+        }));
+      }
+      yield Promise.all(promises);
+      loadTextures.config.preferCreateImageBitmap = preferCreateImageBitmap;
+      return modelData;
     });
-  } else if (Array.isArray(source) && source.length === 1 && source[0] instanceof File && source[0].name.endsWith(".zip")) {
-    zipBlob = source[0];
-    sourceURL = URL.createObjectURL(zipBlob);
-    settings = source.settings;
-  }
-  if (zipBlob) {
-    if (!zipBlob.size) {
-      throw new Error("Empty zip file");
-    }
-    const reader = yield _ZipLoader.zipReader(zipBlob, sourceURL);
-    if (!settings) {
-      settings = yield _ZipLoader.createSettings(reader);
-    }
-    settings._objectURL = _ZipLoader.ZIP_PROTOCOL + _ZipLoader.uid + "/" + settings.url;
-    const files = yield _ZipLoader.unzip(reader, settings);
-    files.settings = settings;
-    context.source = files;
-    if (sourceURL.startsWith("blob:")) {
-      context.live2dModel.once("modelLoaded", (internalModel) => {
-        internalModel.once("destroy", function() {
-          URL.revokeObjectURL(sourceURL);
-        });
-      });
-    }
-    _ZipLoader.releaseReader(reader);
-  }
-  return next();
-});
-Live2DFactory.live2DModelMiddlewares.unshift(ZipLoader.factory);
+  },
+  unload
+};
 if (!window.Live2D) {
   throw new Error("Could not find Cubism 2 runtime. This plugin requires live2d.min.js to be loaded.");
 }
@@ -2032,7 +1294,7 @@ class Cubism2InternalModel extends InternalModel {
     }
     this.updateFocus();
     this.updateNaturalMovements(dt, now);
-    if (this.lipSync && this.motionManager.currentAudio) {
+    if (this.lipSync && this.motionManager.playingSound) {
       let value = this.motionManager.mouthSync();
       let min_ = 0;
       let max_ = 1;
@@ -2188,13 +1450,15 @@ class Live2DPose {
     this.opacityAnimDuration = 500;
     this.partsGroups = [];
     if (json.parts_visible) {
-      this.partsGroups = json.parts_visible.map(({ group }) => group.map(({ id, link }) => {
-        const parts = new Live2DPartsParam(id);
-        if (link) {
-          parts.link = link.map((l) => new Live2DPartsParam(l));
-        }
-        return parts;
-      }));
+      this.partsGroups = json.parts_visible.map(
+        ({ group }) => group.map(({ id, link }) => {
+          const parts = new Live2DPartsParam(id);
+          if (link) {
+            parts.link = link.map((l) => new Live2DPartsParam(l));
+          }
+          return parts;
+        })
+      );
       this.init();
     }
   }
@@ -2218,7 +1482,9 @@ class Live2DPose {
     const phi = 0.5;
     const maxBackOpacity = 0.15;
     let visibleOpacity = 1;
-    let visibleIndex = partsGroup.findIndex(({ paramIndex, partsIndex }) => partsIndex >= 0 && model.getParamFloat(paramIndex) !== 0);
+    let visibleIndex = partsGroup.findIndex(
+      ({ paramIndex, partsIndex }) => partsIndex >= 0 && model.getParamFloat(paramIndex) !== 0
+    );
     if (visibleIndex >= 0) {
       const originalOpacity = model.getPartsOpacity(partsGroup[visibleIndex].partsIndex);
       visibleOpacity = clamp(originalOpacity + dt / this.opacityAnimDuration, 0, 1);
@@ -2270,7 +1536,21 @@ class Live2DPose {
     });
   }
 }
-Live2DFactory.registerRuntime({
+class RuntimeManager {
+  static registerRuntime(runtime) {
+    this.runtimes.push(runtime);
+    this.runtimes.sort((a, b) => b.version - a.version);
+  }
+  static findRuntime(source) {
+    for (const runtime of this.runtimes) {
+      if (runtime.test(source)) {
+        return runtime;
+      }
+    }
+  }
+}
+RuntimeManager.runtimes = [];
+RuntimeManager.registerRuntime({
   version: 2,
   test(source) {
     return source instanceof Cubism2ModelSettings || Cubism2ModelSettings.isValidJSON(source);
@@ -2295,8 +1575,8 @@ Live2DFactory.registerRuntime({
       throw error;
     return model;
   },
-  createInternalModel(coreModel, settings, options) {
-    return new Cubism2InternalModel(coreModel, settings, options);
+  createInternalModel(coreModel, settings) {
+    return new Cubism2InternalModel(coreModel, settings);
   },
   createPose(coreModel, data) {
     return new Live2DPose(coreModel, data);
@@ -2305,4 +1585,241 @@ Live2DFactory.registerRuntime({
     return new Live2DPhysics(coreModel, data);
   }
 });
-export { Cubism2ExpressionManager, Cubism2InternalModel, Cubism2ModelSettings, Cubism2MotionManager, ExpressionManager, FileLoader, FocusController, InteractionMixin, InternalModel, LOGICAL_HEIGHT, LOGICAL_WIDTH, Live2DExpression, Live2DEyeBlink, Live2DFactory, Live2DLoader, Live2DModel, Live2DPhysics, Live2DPose, Live2DTransform, ModelSettings, MotionManager, MotionPreloadStrategy, MotionPriority, MotionState, SoundManager, VERSION, XHRLoader, ZipLoader, applyMixins, clamp, config, copyArray, copyProperty, folderName, logger, rand, remove };
+extensions.add(cubism4Load);
+extensions.add(cubism2Load);
+const tempPoint = new Point();
+const tempMatrix = new Matrix();
+let tickerRef;
+class Live2DModel extends Container {
+  constructor(modelData, options) {
+    super();
+    this.tag = "Live2DModel(uninitialized)";
+    this.textures = [];
+    this.transform = new Live2DTransform();
+    this.anchor = new ObservablePoint(this.onAnchorChange, this, 0, 0);
+    this.glContextID = -1;
+    this.elapsedTime = performance.now();
+    this.deltaTime = 0;
+    this.wasUpdated = false;
+    this._autoUpdate = false;
+    const runtime = RuntimeManager.findRuntime(modelData.settings);
+    if (!runtime) {
+      throw new Error("Unable to find Live 2D runtime.");
+    }
+    runtime.ready().then(() => {
+      var _a, _b, _c, _d, _e, _f;
+      const settings = runtime.createModelSettings(structuredClone(modelData.settings));
+      const coreModel = runtime.createCoreModel(modelData.moc);
+      const internalModel = runtime.createInternalModel(coreModel, settings);
+      this.internalModel = internalModel;
+      this.tag = `Live2DModel(${this.internalModel.settings.name})`;
+      const _options = Object.assign({
+        autoUpdate: true,
+        followMouse: true,
+        touchEvents: true,
+        eventMode: "static"
+      }, options);
+      this.autoUpdate = _options.autoUpdate;
+      this.followMouse = _options.followMouse;
+      this.touchEvents = _options.touchEvents;
+      this.eventMode = _options.eventMode;
+      this.textures = modelData.textures.map((texture) => {
+        return texture.clone();
+      });
+      if (modelData.pose)
+        internalModel.pose = runtime.createPose(coreModel, structuredClone(modelData.pose));
+      if (modelData.physics)
+        internalModel.physics = runtime.createPhysics(coreModel, structuredClone(modelData.physics));
+      if (runtime.version === 2) {
+        if (modelData.motions) {
+          const motions = structuredClone(modelData.motions);
+          const motionManager = internalModel.motionManager;
+          for (const motionGroup in motions) {
+            const defaultFade = motionGroup === "idle" ? config.idleMotionFadingDuration : config.motionFadingDuration;
+            for (let i = 0; i < motions[motionGroup].length; i++) {
+              const motion = Live2DMotion.loadMotion(motions[motionGroup][i]);
+              motion.setFadeIn((_b = (_a = motionManager.motionGroups[motionGroup][i]) == null ? void 0 : _a.fade_in) != null ? _b : defaultFade);
+              motion.setFadeOut((_d = (_c = motionManager.motionGroups[motionGroup][i]) == null ? void 0 : _c.fade_out) != null ? _d : defaultFade);
+              motionManager.motionGroups[motionGroup][i] = motion;
+              const sound = (_e = modelData.sounds) == null ? void 0 : _e[motionGroup][i];
+              if (sound) {
+                motionManager.registerSound(sound, motionGroup, i);
+              }
+            }
+          }
+        }
+        if (modelData.expressions) {
+          const expressions = structuredClone(modelData.expressions);
+          const expressionManager = internalModel.motionManager.expressionManager;
+          for (const expressionIndex in modelData.expressions) {
+            expressionManager.expressions[expressionIndex] = new Live2DExpression(expressions[expressionIndex]);
+          }
+        }
+      } else {
+        if (modelData.motions) {
+          const motions = structuredClone(modelData.motions);
+          const motionManager = internalModel.motionManager;
+          for (const motionGroup in motions) {
+            for (let i = 0; i < motions[motionGroup].length; i++) {
+              motionManager.motionGroups[motionGroup][i] = motionManager.createMotion(motions[motionGroup][i], motionGroup, motions[motionGroup][i]);
+              const sound = (_f = modelData.sounds) == null ? void 0 : _f[motionGroup][i];
+              if (sound) {
+                motionManager.registerSound(sound, motionGroup, i);
+              }
+            }
+          }
+        }
+        if (modelData.expressions) {
+          const expressions = structuredClone(modelData.expressions);
+          const expressionManager = internalModel.motionManager.expressionManager;
+          for (const expressionIndex in modelData.expressions) {
+            expressionManager.expressions[expressionIndex] = expressionManager == null ? void 0 : expressionManager.createExpression(expressions[expressionIndex], modelData.settings.FileReferences.Expressions[expressionIndex]);
+          }
+        }
+      }
+    });
+  }
+  static registerTicker(tickerClass) {
+    tickerRef = tickerClass;
+  }
+  get autoUpdate() {
+    return this._autoUpdate;
+  }
+  set autoUpdate(autoUpdate) {
+    var _a;
+    tickerRef || (tickerRef = (_a = window.PIXI) == null ? void 0 : _a.Ticker);
+    if (autoUpdate) {
+      if (!this._destroyed) {
+        if (tickerRef) {
+          tickerRef.shared.add(this.onTickerUpdate, this);
+          this._autoUpdate = true;
+        } else {
+          logger.warn(this.tag, "No Ticker registered, please call Live2DModel.registerTicker(Ticker).");
+        }
+      }
+    } else {
+      tickerRef == null ? void 0 : tickerRef.shared.remove(this.onTickerUpdate, this);
+      this._autoUpdate = false;
+    }
+  }
+  onAnchorChange() {
+    this.pivot.set(this.anchor.x * this.internalModel.width, this.anchor.y * this.internalModel.height);
+  }
+  motion(group, index, priority, sound, speakOptions = {}) {
+    return index === void 0 ? this.internalModel.motionManager.startRandomMotion(group, priority) : this.internalModel.motionManager.startMotion(group, index, priority, sound, speakOptions);
+  }
+  resetMotions() {
+    return this.internalModel.motionManager.stopAllMotions();
+  }
+  speak(sound, options = {}) {
+    this.internalModel.motionManager.speak(sound, options);
+  }
+  stopSpeaking() {
+    return this.internalModel.motionManager.stopSpeaking();
+  }
+  expression(id) {
+    if (this.internalModel.motionManager.expressionManager) {
+      return id === void 0 ? this.internalModel.motionManager.expressionManager.setRandomExpression() : this.internalModel.motionManager.expressionManager.setExpression(id);
+    }
+    return Promise.resolve(false);
+  }
+  focus(x, y, instant = false) {
+    tempPoint.x = x;
+    tempPoint.y = y;
+    this.toModelPosition(tempPoint, tempPoint, true);
+    let tx = tempPoint.x / this.internalModel.originalWidth * 2 - 1;
+    let ty = tempPoint.y / this.internalModel.originalHeight * 2 - 1;
+    let radian = Math.atan2(ty, tx);
+    this.internalModel.focusController.focus(Math.cos(radian), -Math.sin(radian), instant);
+  }
+  tap(x, y) {
+    const hitAreaNames = this.hitTest(x, y);
+    if (hitAreaNames.length) {
+      logger.log(this.tag, `Hit`, hitAreaNames);
+      this.emit("hit", hitAreaNames);
+    }
+  }
+  hitTest(x, y) {
+    tempPoint.x = x;
+    tempPoint.y = y;
+    this.toModelPosition(tempPoint, tempPoint);
+    return this.internalModel.hitTest(tempPoint.x, tempPoint.y);
+  }
+  toModelPosition(position, result = position.clone(), skipUpdate) {
+    if (!skipUpdate) {
+      this._recursivePostUpdateTransform();
+      if (!this.parent) {
+        this.parent = this._tempDisplayObjectParent;
+        this.displayObjectUpdateTransform();
+        this.parent = null;
+      } else {
+        this.displayObjectUpdateTransform();
+      }
+    }
+    this.transform.worldTransform.applyInverse(position, result);
+    this.internalModel.localTransform.applyInverse(result, result);
+    return result;
+  }
+  containsPoint(point) {
+    return this.getBounds(true).contains(point.x, point.y);
+  }
+  _calculateBounds() {
+    this._bounds.addFrame(this.transform, 0, 0, this.internalModel.width, this.internalModel.height);
+  }
+  onTickerUpdate() {
+    this.update(tickerRef.shared.deltaMS);
+  }
+  update(dt) {
+    this.deltaTime += dt;
+    this.elapsedTime += dt;
+    this.wasUpdated = true;
+  }
+  _render(renderer) {
+    if (!this.wasUpdated) {
+      return;
+    }
+    renderer.batch.reset();
+    renderer.geometry.reset();
+    renderer.shader.reset();
+    renderer.state.reset();
+    let shouldUpdateTexture = false;
+    if (this.glContextID !== renderer.CONTEXT_UID) {
+      this.glContextID = renderer.CONTEXT_UID;
+      this.internalModel.updateWebGLContext(renderer.gl, this.glContextID);
+      shouldUpdateTexture = true;
+    }
+    for (let i = 0; i < this.textures.length; i++) {
+      const texture = this.textures[i];
+      if (!texture.valid) {
+        continue;
+      }
+      if (shouldUpdateTexture || !texture.baseTexture._glTextures[this.glContextID]) {
+        renderer.gl.pixelStorei(WebGLRenderingContext.UNPACK_FLIP_Y_WEBGL, this.internalModel.textureFlipY);
+        renderer.texture.bind(texture.baseTexture, 0);
+      }
+      this.internalModel.bindTexture(i, texture.baseTexture._glTextures[this.glContextID].texture);
+      texture.baseTexture.touched = renderer.textureGC.count;
+    }
+    const viewport = renderer.framebuffer.viewport;
+    this.internalModel.viewport = [viewport.x, viewport.y, viewport.width, viewport.height];
+    if (this.deltaTime) {
+      this.internalModel.update(this.deltaTime, this.elapsedTime);
+      this.deltaTime = 0;
+    }
+    const internalTransform = tempMatrix.copyFrom(renderer.globalUniforms.uniforms.projectionMatrix).append(this.worldTransform);
+    this.internalModel.updateTransform(internalTransform);
+    this.internalModel.draw(renderer.gl);
+    renderer.state.reset();
+    renderer.texture.reset();
+  }
+  destroy(options) {
+    this.emit("destroy");
+    this.autoUpdate = false;
+    this.removeAllListeners();
+    this.textures.length = 0;
+    this.internalModel.destroy();
+    super.destroy(options);
+  }
+}
+applyMixins(Live2DModel, [InteractionMixin]);
+export { Cubism2ExpressionManager, Cubism2InternalModel, Cubism2ModelSettings, Cubism2MotionManager, ExpressionManager, FocusController, InteractionMixin, InternalModel, LOGICAL_HEIGHT, LOGICAL_WIDTH, Live2DExpression, Live2DEyeBlink, Live2DModel, Live2DPhysics, Live2DPose, Live2DTransform, ModelSettings, MotionManager, MotionPreloadStrategy, MotionPriority, MotionState, VERSION, applyMixins, clamp, config, copyArray, copyProperty, logger, rand, remove };
