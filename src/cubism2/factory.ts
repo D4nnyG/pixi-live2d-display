@@ -2,10 +2,10 @@ import { Cubism2InternalModel } from '@/cubism2/Cubism2InternalModel';
 import { Cubism2ModelSettings } from '@/cubism2/Cubism2ModelSettings';
 import { Live2DPhysics } from '@/cubism2/Live2DPhysics';
 import { Live2DPose } from '@/cubism2/Live2DPose';
-import { Live2DFactory, Live2DFactoryOptions } from '@/factory/Live2DFactory';
 import { Cubism2Spec } from '../types/Cubism2Spec';
+import { RuntimeManager } from '@/RuntimeManager';
 
-Live2DFactory.registerRuntime({
+RuntimeManager.registerRuntime({
     version: 2,
 
     test(source: any): boolean {
@@ -39,8 +39,8 @@ Live2DFactory.registerRuntime({
         return model;
     },
 
-    createInternalModel(coreModel: Live2DModelWebGL, settings: Cubism2ModelSettings, options?: Live2DFactoryOptions): Cubism2InternalModel {
-        return new Cubism2InternalModel(coreModel, settings, options);
+    createInternalModel(coreModel: Live2DModelWebGL, settings: Cubism2ModelSettings): Cubism2InternalModel {
+        return new Cubism2InternalModel(coreModel, settings);
     },
 
     createPose(coreModel: Live2DModelWebGL, data: any): Live2DPose {

@@ -1,5 +1,5 @@
-import { folderName } from '@/utils';
-import { url } from '@pixi/utils';
+// import { folderName } from '@/utils';
+import { url, path } from '@pixi/utils';
 import { JSONObject } from '../types/helpers';
 
 /**
@@ -60,7 +60,7 @@ export abstract class ModelSettings {
         this.url = url;
 
         // set default name to folder's name
-        this.name = folderName(this.url);
+        this.name = path.dirname(this.url);
     }
 
     /**

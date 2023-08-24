@@ -1,19 +1,18 @@
-import { InternalModel, ModelSettings, MotionPriority } from '@/cubism-common';
-import { MotionManagerOptions, MotionPreloadStrategy, SpeakOptions } from '@/cubism-common/MotionManager';
-import type { Live2DFactoryOptions } from '@/factory/Live2DFactory';
-import { Live2DFactory } from '@/factory/Live2DFactory';
+import { InternalModel, MotionPriority } from '@/cubism-common';
+import { MotionManagerOptions, SpeakOptions } from '@/cubism-common/MotionManager';
 import { Renderer, Texture, extensions } from '@pixi/core';
-import { Container } from '@pixi/display';
+import { Container, IDestroyOptions } from '@pixi/display';
 import { Matrix, ObservablePoint, Point, Rectangle } from '@pixi/math';
 import type { Ticker } from '@pixi/ticker';
 import { InteractionMixin } from './InteractionMixin';
 import { Live2DTransform } from './Live2DTransform';
-import { JSONObject } from './types/helpers';
 import { applyMixins, logger } from './utils';
-import { ICubism4ModelData, cubism4Load, cubism2Load, ICubismModelData, ICubism2ModelData } from './loader';
+import { cubism4Load, cubism2Load, ICubismModelData, ICubism4ModelData, ICubism2ModelData } from './loader';
 import { PlayOptions, Sound } from '@pixi/sound';
 import { config } from './config';
 import { Live2DExpression } from './cubism2';
+import { RuntimeManager } from './RuntimeManager';
+import { EventMode } from '@pixi/events';
 
 extensions.add(cubism4Load);
 extensions.add(cubism2Load);
@@ -26,11 +25,24 @@ export interface Live2DModelOptions extends MotionManagerOptions {
     autoUpdate?: boolean;
 
     /**
-     * Should the internal model automatically reacts to interactions by listening for pointer events.
+     * Should the model follow the mouse
      * @see {@link InteractionMixin}
      * @default true
      */
-    autoInteract?: boolean;
+    followMouse?: boolean;
+
+    /**
+     * Should the model emit touch events
+     * @see {@link InteractionMixin}
+     * @default true
+     */
+    touchEvents?: boolean;
+
+    /**
+     * Interaction event mode for the model
+     * @default "static"
+     */
+    eventMode?: EventMode;
 }
 
 const tempPoint = new Point();
@@ -53,130 +65,7 @@ export type Live2DConstructor = { new(options?: Live2DModelOptions): Live2DModel
  * ```
  * @emits {@link Live2DModelEvents}
  */
-export class Live2DModel<IM extends InternalModel = InternalModel> extends Container {
-    /**
-     * Creates a Live2DModel from given source.
-     * @param source - Can be one of: settings file URL, settings JSON object, ModelSettings instance.
-     * @param options - Options for the creation.
-     * @return Promise that resolves with the Live2DModel.
-     */
-    static from<M extends Live2DConstructor = typeof Live2DModel>(this: M, source: string | JSONObject | ModelSettings, options?: Live2DFactoryOptions): Promise<InstanceType<M>> {
-        const model = new this(options) as InstanceType<M>;
-
-        return Live2DFactory.setupLive2DModel(model, source, options).then(() => model);
-    }
-
-    /**
-     * Synchronous version of `Live2DModel.from()`. This method immediately returns a Live2DModel instance,
-     * whose resources have not been loaded. Therefore this model can't be manipulated or rendered
-     * until the "load" event has been emitted.
-     *
-     * ```js
-     * // no `await` here as it's not a Promise
-     * const model = Live2DModel.fromSync('shizuku.model.json');
-     *
-     * // these will cause errors!
-     * // app.stage.addChild(model);
-     * // model.motion('tap_body');
-     *
-     * model.once('load', () => {
-     *     // now it's safe
-     *     app.stage.addChild(model);
-     *     model.motion('tap_body');
-     * });
-     * ```
-     */
-    static fromSync<M extends Live2DConstructor = typeof Live2DModel>(this: M, source: string | JSONObject | ModelSettings, options?: Live2DFactoryOptions): InstanceType<M> {
-        const model = new this(options) as InstanceType<M>;
-
-        Live2DFactory.setupLive2DModel(model, source, options).then(options?.onLoad).catch(options?.onError);
-
-        return model;
-    }
-
-    static fromAsset(modelData: ICubismModelData, options?: Live2DModelOptions){
-        const model = new this(options);
-
-        const runtime = Live2DFactory.findRuntime(modelData.settings);
-        if(!runtime){
-            throw new Error("Unable to find Live 2D runtime.");
-        }
-
-        runtime.ready().then(() => {
-            // Settings
-            const settings = runtime.createModelSettings(structuredClone(modelData.settings));
-
-            // Model
-            const coreModel = runtime.createCoreModel(modelData.moc);
-            const internalModel = runtime.createInternalModel(coreModel, settings, {motionPreload: MotionPreloadStrategy.NONE});
-            model.internalModel = internalModel;
-            model.init();
-
-            // Textures
-            // model.textures = settings.textures.map(url => {
-            //     return Texture.from("model/22/" + url)
-            //     return new Texture();
-            // })
-            model.textures = modelData.textures.map(texture => {
-                return new Texture(texture.baseTexture);
-                return texture.clone();
-            });
-
-            // Poses
-            if(modelData.pose) internalModel.pose = runtime.createPose(coreModel, structuredClone(modelData.pose));
-
-            // Physics
-            if(modelData.physics) internalModel.physics = runtime.createPhysics(coreModel, structuredClone(modelData.physics));
-
-            
-            // Motions and Expression
-            if(runtime.version === 2){
-                if(modelData.motions){
-                    const motions = structuredClone((modelData as ICubism2ModelData).motions);
-                    const motionManager = internalModel.motionManager;
-                    for(const motionGroup in motions){
-                        const defaultFade = motionGroup === "idle" ? config.idleMotionFadingDuration : config.motionFadingDuration;
-                        for(let i =0; i < motions[motionGroup].length; i++){
-                            const motion = Live2DMotion.loadMotion(motions[motionGroup][i]);
-                            motion.setFadeIn(motionManager.motionGroups[motionGroup][i]?.fade_in ?? defaultFade);
-                            motion.setFadeOut(motionManager.motionGroups[motionGroup][i]?.fade_out ?? defaultFade);
-                            motionManager.motionGroups[motionGroup][i] = motion;
-                        }
-                    }
-                }
-
-                if(modelData.expressions){
-                    const expressions = structuredClone((modelData as ICubism2ModelData).expressions);
-                    const expressionManager = internalModel.motionManager.expressionManager;
-                    for(const expressionIndex in modelData.expressions){
-                        expressionManager.expressions[expressionIndex] = new Live2DExpression(expressions[expressionIndex]);
-                    }
-                }
-
-
-            } else {
-                if(modelData.motions){
-                    const motions = structuredClone(modelData.motions);
-                    const motionManager = internalModel.motionManager;
-                    for(const motionGroup in motions){
-                        for(let i =0; i < motions[motionGroup].length; i++){
-                            motionManager.motionGroups[motionGroup][i] = motionManager.createMotion(motions[motionGroup][i], motionGroup, motions[motionGroup][i]);
-                        }
-                    }
-                }
-                if(modelData.expressions){
-                    const expressions = structuredClone(modelData.expressions);
-                    const expressionManager = internalModel.motionManager.expressionManager;
-                    for(const expressionIndex in modelData.expressions){
-                        expressionManager.expressions[expressionIndex] =  expressionManager?.createExpression(expressions[expressionIndex], (modelData as ICubism4ModelData).settings.FileReferences.Expressions![expressionIndex]);
-                    }
-                }
-            }
-        });
-
-        return model;
-    }
-
+export class Live2DModel extends Container {
     /**
      * Registers the class of `PIXI.Ticker` for auto updating.
      */
@@ -192,7 +81,7 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
     /**
      * The internal model. Though typed as non-nullable, it'll be undefined until the "ready" event is emitted.
      */
-    internalModel!: IM;
+    internalModel!: InternalModel;
 
     /**
      * Pixi textures.
@@ -257,30 +146,103 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
         }
     }
 
-    constructor(options?: Live2DModelOptions) {
+    constructor(modelData: ICubismModelData, options?: Live2DModelOptions) {
         super();
-
-        this.once('modelLoaded', () => this.init(options));
-    }
-
-    // TODO: rename
-    /**
-     * A handler of the "modelLoaded" event, invoked when the internal model has been loaded.
-     */
-    protected init(options?: Live2DModelOptions) {
-        this.tag = `Live2DModel(${this.internalModel.settings.name})`;
-
-        const _options = Object.assign({
-            autoUpdate: true,
-            autoInteract: true,
-        }, options);
-
-        if (_options.autoInteract) {
-            this.eventMode = "static";
+        const runtime = RuntimeManager.findRuntime(modelData.settings);
+        if(!runtime){
+            throw new Error("Unable to find Live 2D runtime.");
         }
 
-        this.autoInteract = _options.autoInteract;
-        this.autoUpdate = _options.autoUpdate;
+        runtime.ready().then(() => {
+            // Settings
+            const settings = runtime.createModelSettings(structuredClone(modelData.settings));
+
+            // Model
+            const coreModel = runtime.createCoreModel(modelData.moc);
+            const internalModel = runtime.createInternalModel(coreModel, settings);
+            this.internalModel = internalModel;
+
+            // Init
+            this.tag = `Live2DModel(${this.internalModel.settings.name})`;
+
+            const _options = Object.assign({
+                autoUpdate: true,
+                followMouse: true,
+                touchEvents: true,
+                eventMode: "static"
+            }, options);
+
+            this.autoUpdate = _options.autoUpdate;
+            this.followMouse = _options.followMouse;
+            this.touchEvents = _options.touchEvents;
+            this.eventMode = _options.eventMode;
+
+            // Textures
+            this.textures = modelData.textures.map(texture => {
+                return texture.clone();
+            });
+
+            // Poses
+            if(modelData.pose) internalModel.pose = runtime.createPose(coreModel, structuredClone(modelData.pose));
+
+            // Physics
+            if(modelData.physics) internalModel.physics = runtime.createPhysics(coreModel, structuredClone(modelData.physics));
+
+            
+            // Motions and Expression
+            if(runtime.version === 2){
+                if(modelData.motions){
+                    const motions = structuredClone((modelData as ICubism2ModelData).motions);
+                    const motionManager = internalModel.motionManager;
+                    for(const motionGroup in motions){
+                        const defaultFade = motionGroup === "idle" ? config.idleMotionFadingDuration : config.motionFadingDuration;
+                        for(let i =0; i < motions[motionGroup].length; i++){
+                            const motion = Live2DMotion.loadMotion(motions[motionGroup][i]);
+                            motion.setFadeIn(motionManager.motionGroups[motionGroup][i]?.fade_in ?? defaultFade);
+                            motion.setFadeOut(motionManager.motionGroups[motionGroup][i]?.fade_out ?? defaultFade);
+                            motionManager.motionGroups[motionGroup][i] = motion;
+
+                            const sound = modelData.sounds?.[motionGroup][i]
+                            if(sound){
+                                motionManager.registerSound(sound, motionGroup, i);
+                            }
+                        }
+                    }
+                }
+
+                if(modelData.expressions){
+                    const expressions = structuredClone((modelData as ICubism2ModelData).expressions);
+                    const expressionManager = internalModel.motionManager.expressionManager;
+                    for(const expressionIndex in modelData.expressions){
+                        expressionManager.expressions[expressionIndex] = new Live2DExpression(expressions[expressionIndex]);
+                    }
+                }
+
+
+            } else {
+                if(modelData.motions){
+                    const motions = structuredClone(modelData.motions);
+                    const motionManager = internalModel.motionManager;
+                    for(const motionGroup in motions){
+                        for(let i =0; i < motions[motionGroup].length; i++){
+                            motionManager.motionGroups[motionGroup][i] = motionManager.createMotion(motions[motionGroup][i], motionGroup, motions[motionGroup][i]);
+
+                            const sound = modelData.sounds?.[motionGroup][i]
+                            if(sound){
+                                motionManager.registerSound(sound, motionGroup, i);
+                            }
+                        }
+                    }
+                }
+                if(modelData.expressions){
+                    const expressions = structuredClone(modelData.expressions);
+                    const expressionManager = internalModel.motionManager.expressionManager;
+                    for(const expressionIndex in modelData.expressions){
+                        expressionManager.expressions[expressionIndex] =  expressionManager?.createExpression(expressions[expressionIndex], (modelData as ICubism4ModelData).settings.FileReferences.Expressions![expressionIndex]);
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -295,15 +257,14 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
      * @param group - The motion group.
      * @param index - Index in the motion group.
      * @param priority - The priority to be applied.
-     * @param sound - The audio url to file or base64 content 
-     * @param volume - Volume of the sound (0-1) /*new in 1.0.4*
-     * @param expression - In case you want to mix up a expression while playing sound (bind with Model.expression())
+     * @param sound - the Pixi sound asset.
+     * @param speakOptions Options for playing the sound.
      * @return Promise that resolves with true if the motion is successfully started, with false otherwise.
      */
-    motion(group: string, index?: number, priority?: MotionPriority, sound?: Sound, soundOptions: SpeakOptions = {}): Promise<boolean> {
+    motion(group: string, index?: number, priority?: MotionPriority, sound?: Sound, speakOptions: SpeakOptions = {}): Promise<boolean> {
         return index === undefined
             ? this.internalModel.motionManager.startRandomMotion(group, priority)
-            : this.internalModel.motionManager.startMotion(group, index, priority, sound, soundOptions);
+            : this.internalModel.motionManager.startMotion(group, index, priority, sound, speakOptions);
     }
 
     
@@ -540,7 +501,7 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
      * @param [options.baseTexture=false] - Only used for child Sprites if options.children is set to true
      *  Should it destroy the base texture of the child sprite
      */
-    destroy(options?: { children?: boolean, texture?: boolean, baseTexture?: boolean }): void {
+    destroy(options?: IDestroyOptions): void {
         this.emit('destroy');
 
         // the setters will do the cleanup
@@ -548,9 +509,7 @@ export class Live2DModel<IM extends InternalModel = InternalModel> extends Conta
 
         this.removeAllListeners();
 
-        if (options?.texture) {
-            this.textures.forEach(texture => texture.destroy(options.baseTexture));
-        }
+        this.textures.length = 0;
 
         this.internalModel.destroy();
 

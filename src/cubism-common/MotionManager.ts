@@ -187,37 +187,20 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      * @emits {@link MotionManagerEvents.motionLoadError}
      */
     async loadMotion(group: string, index: number): Promise<Motion | undefined> {
-        if (!this.definitions[group] ?. [index]) {
+        if (!this.definitions[group]?.[index]) {
             logger.warn(this.tag, `Undefined motion at "${group}"[${index}]`);
             return undefined;
         }
 
-        if (this.motionGroups[group]![index] === null) {
-            logger.warn(this.tag, `Cannot start motion at "${group}"[${index}] because it's already failed in loading.`);
+        if (this.motionGroups[group][index] === null) {
+            logger.warn(this.tag, `Motion at "${group}"[${index}] failed to load.`);
             return undefined;
         }
 
-        if (this.motionGroups[group]![index]) {
-            return this.motionGroups[group]![index]!;
+        if (this.motionGroups[group][index]) {
+            return this.motionGroups[group][index];
         }
-
-        const motion = await this._loadMotion(group, index);
-
-        if (this.destroyed) {
-            return;
-        }
-
-        this.motionGroups[group]![index] = motion ?? null;
-
-        return motion;
-    }
-
-    /**
-     * Loads the Motion. Will be implemented by Live2DFactory in order to avoid circular dependency.
-     * @ignore
-     */
-     private _loadMotion(group: string, index: number): Promise<Motion | undefined> {
-        throw new Error('Not implemented.');
+        return undefined;
     }
 
     /**
@@ -243,6 +226,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
         const complete = (s: Sound) => {
             if(passedComplete) passedComplete(s);
             this._playingSound = false;
+            this._currentSound = undefined;
             this._currentAnalyser = undefined;
             options.expression && this.expressionManager && this.expressionManager.resetExpression()
         };
@@ -264,7 +248,7 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
      */
     async startMotion(group: string, index: number, priority = MotionPriority.NORMAL, sound?: Sound, speakOptions: SpeakOptions = {}): Promise<boolean> {
         // Does not start a new motion if audio is still playing
-        if (this.currentSound?.isPlaying) return false;
+        if (this.playingSound) return false;
 
         if (!this.state.reserve(group, index, priority)) return false;
 
@@ -275,9 +259,14 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
         const motion = await this.loadMotion(group, index);
 
         let soundInstance: IMediaInstance;
-        if (config.sound && sound){
-            soundInstance = await this.speak(sound, speakOptions)
-            priority = MotionPriority.FORCE
+        if (config.sound){
+            if(sound){
+                soundInstance = await this.speak(sound, speakOptions)
+                priority = MotionPriority.FORCE
+            } else if(this._sounds?.[group]?.[index]){
+                soundInstance = await this.speak(this._sounds[group][index], speakOptions)
+                priority = MotionPriority.FORCE
+            }
         }
 
         if (!this.state.start(motion, group, index, priority)) {
@@ -403,6 +392,13 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
         }
     }
 
+    private _sounds: Record<string, Sound[]> = {};
+
+    registerSound(sound: Sound, group: string, index: number){
+        if(!this._sounds[group]) this._sounds[group] = [];
+        this._sounds[group][index] = sound;
+    }
+
     /**
      * Destroys the instance.
      * @emits {@link MotionManagerEvents.destroy}
@@ -411,12 +407,21 @@ export abstract class MotionManager<Motion = any, MotionSpec = any> extends Even
         this.destroyed = true;
         this.emit('destroy');
 
+        this.stopSpeaking();
         this.stopAllMotions();
+        
+        for(const group in this._sounds){
+            this._sounds[group].length = 0;
+            delete this._sounds[group];
+        }
+        this._sounds = undefined;
+        
         this.expressionManager?.destroy();
 
         const self = this as Mutable<Partial<this>>;
         self.definitions = undefined;
         self.motionGroups = undefined;
+        
     }
 
     /**

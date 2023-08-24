@@ -84,19 +84,15 @@ export abstract class ExpressionManager<Expression = any, ExpressionSpec = any> 
         }
 
         if (this.expressions[index] === null) {
-            logger.warn(this.tag, `Cannot set expression at [${index}] because it's already failed in loading.`);
+            logger.warn(this.tag, `Expression at [${index}] failed to load.`);
             return undefined;
         }
 
         if (this.expressions[index]) {
-            return this.expressions[index] as Expression;
+            return this.expressions[index];
         }
 
-        const expression = await this._loadExpression(index);
-
-        this.expressions[index] = expression;
-
-        return expression;
+        return undefined;
     }
 
     /**

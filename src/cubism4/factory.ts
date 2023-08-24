@@ -1,14 +1,14 @@
 import { Cubism4InternalModel } from '@/cubism4/Cubism4InternalModel';
 import { Cubism4ModelSettings } from '@/cubism4/Cubism4ModelSettings';
 import { cubism4Ready } from '@/cubism4/setup';
-import { Live2DFactory, Live2DFactoryOptions } from '@/factory/Live2DFactory';
 import { CubismPose } from '@cubism/effect/cubismpose';
 import { CubismMoc } from '@cubism/model/cubismmoc';
 import { CubismModel } from '@cubism/model/cubismmodel';
 import { CubismPhysics } from '@cubism/physics/cubismphysics';
 import { CubismSpec } from '@cubism/CubismSpec';
+import { RuntimeManager } from '@/RuntimeManager';
 
-Live2DFactory.registerRuntime({
+RuntimeManager.registerRuntime({
     version: 4,
 
     ready: cubism4Ready,
@@ -51,8 +51,8 @@ Live2DFactory.registerRuntime({
         }
     },
 
-    createInternalModel(coreModel: CubismModel, settings: Cubism4ModelSettings, options?: Live2DFactoryOptions): Cubism4InternalModel {
-        const model = new Cubism4InternalModel(coreModel, settings, options);
+    createInternalModel(coreModel: CubismModel, settings: Cubism4ModelSettings): Cubism4InternalModel {
+        const model = new Cubism4InternalModel(coreModel, settings);
 
         const coreModelWithMoc = coreModel as { __moc?: CubismMoc };
 

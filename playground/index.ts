@@ -3,7 +3,7 @@
 
 import { Application, Ticker } from 'pixi.js';
 import { Live2DModel } from '../src';
-import { Assets, loadTextures } from '@pixi/assets';
+import { Assets } from '@pixi/assets';
 import { sound } from "@pixi/sound";
 
 Live2DModel.registerTicker(Ticker);
@@ -21,12 +21,14 @@ async function main() {
     (window as any).renderer = renderer;
     (window as any).sound = sound;
     (window as any).assets = Assets;
-    // Assets.load("./Haru/Haru.model3.json").then(resp => {
-    //     const model = Live2DModel.fromAsset(resp);
-    //     model.scale = {x:0.25, y:0.25};
-    //     app.stage.addChild(model);
-    //     globalThis.model = model;
-    // });
+    (window as any).Live2DModel = Live2DModel;
+    Assets.load("./Haru/Haru.model3.json").then(resp => {
+        const model = new Live2DModel(resp);
+        model.scale = {x:0.25, y:0.25};
+        app.stage.addChild(model);
+        globalThis.model = model;
+        globalThis.assetData = resp;
+    });
 }
 
 main().then();

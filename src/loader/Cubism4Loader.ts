@@ -1,36 +1,10 @@
-import { ExtensionType, Texture, extensions } from "@pixi/core";
-import { Loader, LoaderParserPriority, ResolvedAsset, loadTextures } from "@pixi/assets";
+import { ExtensionType } from "@pixi/core";
+import { Loader, LoaderParserPriority, ResolvedAsset } from "@pixi/assets";
 import { path } from "@pixi/utils";
 import { Cubism4Spec } from "@/types/Cubism4Spec";
-import { Cubism2Spec } from "@/types/Cubism2Spec";
-
-export interface ICubism4ModelData {
-    settings?: Cubism4Spec.ModelJSON
-    moc?: ArrayBuffer;
-    textures?: Texture[];
-    motions?: Record<string, Cubism4Spec.Motion[]>;
-    physics?: Cubism4Spec.Physics;
-    pose?: Cubism4Spec.Pose;
-    expressions?: Cubism4Spec.Expressions[];
-}
-
-export interface ICubism2ModelData {
-    settings?: Cubism2Spec.ModelJSON
-    moc?: ArrayBuffer;
-    textures?: Texture[];
-    motions?: Record<string, ArrayBuffer[]>
-    physics?: Cubism4Spec.Physics;
-    pose?: Cubism4Spec.Pose;
-    expressions?: Cubism2Spec.ExpressionJSON[];
-}
-
-export type ICubismModelData = ICubism2ModelData | ICubism4ModelData;
-
-async function loadArrayBuffer(url: string): Promise<ArrayBuffer>{
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    return arrayBuffer;
-}
+import { ICubism4ModelData } from "./types";
+import { loadArrayBuffer as load } from "./loadArrayBuffer";
+import { unload } from "./unload";
 
 export const cubism4Load = {
     name:"loadCubism4",
@@ -44,7 +18,7 @@ export const cubism4Load = {
         return path.extname(url) === ".moc3"
     },
 
-    load: loadArrayBuffer,
+    load,
 
     testParse(asset: ResolvedAsset): boolean {
         if(!asset.FileReferences) return false;
@@ -56,8 +30,8 @@ export const cubism4Load = {
         asset: Cubism4Spec.ModelJSON,
         loadAsset: ResolvedAsset,
         loader: Loader
-        ): Promise<ICubismModelData> {
-            const modelData: ICubismModelData = {
+        ): Promise<ICubism4ModelData> {
+            const modelData: ICubism4ModelData = {
                 textures: [],
             };
             const FR = asset.FileReferences;
@@ -88,15 +62,26 @@ export const cubism4Load = {
             // Load Motions
             if(FR.Motions){
                 modelData.motions = {};
+                modelData.sounds = {};
                 for(const motionName in FR.Motions){
                     modelData.motions[motionName] = []
+                    modelData.sounds[motionName] = []
                     for(const motionIndex in FR.Motions[motionName]){
+                        const data = FR.Motions[motionName][motionIndex]
                         promises.push(
                             loader.load(
-                                path.join(dir, FR.Motions[motionName][motionIndex].File)
+                                path.join(dir, data.File)
                             ).then(motion => {
                                 modelData.motions[motionName][motionIndex] = motion;
                         }));
+                        if(data.Sound){
+                            promises.push(
+                                loader.load(
+                                    path.join(dir, data.Sound)
+                                ).then(sound => {
+                                    modelData.sounds[motionName][motionIndex] = sound;
+                            }));
+                        }
                     }
                 }
             }
@@ -113,7 +98,7 @@ export const cubism4Load = {
                 modelData.expressions = [];
                 for(const expressionIndex in FR.Expressions){
                     promises.push(loader.load(path.join(dir, FR.Expressions[expressionIndex].File)).then(expression => {
-                        modelData.expressions![expressionIndex] = expression;
+                        modelData.expressions[expressionIndex] = expression;
                     }));
                 }
             }
@@ -129,118 +114,5 @@ export const cubism4Load = {
             return modelData;
         },
 
-        unload(asset: ICubism4ModelData){
-            delete asset.moc;
-            delete asset.textures;
-            delete asset.motions;
-            delete asset.physics;
-            delete asset.pose;
-            delete asset.expressions;
-        }
+        unload
 }
-
-export const cubism2Load = {
-    name:"loadCubism2",
-
-    extension: {
-        type:ExtensionType.LoadParser,
-        priority: LoaderParserPriority.High
-    },
-
-    test(url:string): boolean {
-        const ext = path.extname(url)
-        return ext === ".moc" || ext === ".mtn";
-    },
-
-    load: loadArrayBuffer,
-
-    testParse(asset: ResolvedAsset): boolean {
-        if(!asset.model) return false;
-        return path.extname(asset.model) === ".moc";
-    },
-
-    async parse(
-        asset: Cubism2Spec.ModelJSON,
-        loadAsset: ResolvedAsset,
-        loader: Loader
-    ): Promise<ICubism2ModelData>{
-        const modelData: ICubism2ModelData = {
-            textures: [],
-        };
-        // Image Bitmap fucks Cubism 2 for some reason
-        const preferCreateImageBitmap = loadTextures.config.preferCreateImageBitmap;
-        loadTextures.config.preferCreateImageBitmap = false;
-
-        const promises: Promise<void>[] = [];
-        modelData.settings = asset;
-        // url required in settings for older models.
-        //@ts-ignore
-        asset.url = loadAsset.src;
-        const dir = path.dirname(loadAsset.src);
-
-        // Load moc
-        promises.push(
-            loader.load(
-                path.join(dir, asset.model)
-        ).then(moc => {
-            modelData.moc = moc;
-        }));
-
-        // Load textures
-        for(const textureIndex in asset.textures){
-            promises.push(
-                loader.load(
-                    path.join(dir, asset.textures[textureIndex])
-                ).then(texture => {
-                    modelData.textures[textureIndex] = texture;
-            }));
-        }
-
-        // Load Motions
-        if(asset.motions){
-            modelData.motions = {};
-            for(const motionName in asset.motions){
-                modelData.motions[motionName] = []
-                for(const motionIndex in asset.motions[motionName]){
-                    promises.push(
-                        loader.load(
-                            path.join(dir, asset.motions[motionName][motionIndex].file)
-                        ).then(motion => {
-                            modelData.motions[motionName][motionIndex] = motion;
-                    }));
-                }
-            }
-        }
-
-        // Load Physics
-        if(asset.physics){
-            promises.push(loader.load(path.join(dir, asset.physics)).then(physics => {
-                modelData.physics = physics;
-            }));
-        }
-
-        // Load Expressions
-        if(asset.expressions){
-            modelData.expressions = [];
-            for(const expressionIndex in asset.expressions){
-                promises.push(loader.load(path.join(dir, asset.expressions[expressionIndex].file)).then(expression => {
-                    modelData.expressions![expressionIndex] = expression;
-                }));
-            }
-        }
-
-        // Load Pose
-        if(asset.pose){
-            promises.push(loader.load(path.join(dir, asset.pose)).then(pose => {
-                modelData.pose = pose;
-            }));
-        }
-
-        await Promise.all(promises);
-        loadTextures.config.preferCreateImageBitmap = preferCreateImageBitmap;
-        return modelData;
-    }
-}
-
-// loadTextures.config.preferWorkers = false;
-// loadTextures.config.preferCreateImageBitmap = false;

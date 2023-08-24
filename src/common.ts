@@ -7,7 +7,6 @@ export * from './Live2DModel';
 export * from './Live2DTransform';
 export * from './InteractionMixin';
 export * from './config';
-export * from './factory';
 export * from './utils';
 export * from './types/helpers.d';
 export * from './types/events.d';

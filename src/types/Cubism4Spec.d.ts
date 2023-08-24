@@ -9,7 +9,7 @@ export namespace Cubism4Spec {
             DisplayInfo: string;
             Expressions?: Array<{Name: string; File: string}>;
             Motions?: {
-                [name: string]: Array<{File: string, FadeInTime?: number, FadeOutTime?: number;}>;
+                [name: string]: Array<{File: string, FadeInTime?: number, FadeOutTime?: number, Sound?: string;}>;
             };
             UserData?: string;
         };
